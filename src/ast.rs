@@ -16,4 +16,6 @@ pub enum Expr {
     Sub(Box<Expr>, Box<Expr>),
     Mul(Box<Expr>, Box<Expr>),
     Div(Box<Expr>, Box<Expr>),
+    Let(String, Box<Expr>, Box<Expr>),
+    Var(String),
 }

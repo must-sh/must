@@ -5,4 +5,13 @@ pub enum Inst {
     Sub,
     Mul,
     Div,
+
+    Set(usize),
+    Get(usize),
+}
+
+#[derive(Debug)]
+pub struct Prog {
+    pub insts: Vec<Inst>,
+    pub variables: usize,
 }
