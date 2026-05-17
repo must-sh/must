@@ -1,1 +1,5 @@
-2 + 2 * 2
+
+let x = 42 in
+let y = 13 in
+let z = x + y in
+z * 2

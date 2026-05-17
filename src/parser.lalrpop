@@ -9,6 +9,7 @@ pub File: File = {
 Expr: Expr = {
     #[precedence(level="0")]
     "(" <e: Expr> ")" => e,
+    <id: Ident> => Expr::Var(id),
     <n: Num> => Expr::Number(n),
     #[precedence(level="1")] #[assoc(side="left")]
     <x: Expr> "*" <y: Expr> => Expr::Mul(Box::new(x), Box::new(y)),
@@ -16,6 +17,13 @@ Expr: Expr = {
     #[precedence(level="2")] #[assoc(side="left")]
     <x: Expr> "+" <y: Expr> => Expr::Add(Box::new(x), Box::new(y)),
     <x: Expr> "-" <y: Expr> => Expr::Sub(Box::new(x), Box::new(y)),
+
+    #[precedence(level="3")]
+    "let" <id: Ident> "=" <e1: Expr> "in" <e2: Expr> => Expr::Let(id, Box::new(e1), Box::new(e2)),
 };
+
+Ident: String = {
+    r"[a-z]+" => <>.to_string(),
+}
 
 Num: i32 = <s: r"[0-9]+"> => s.parse().unwrap();

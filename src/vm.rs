@@ -1,9 +1,11 @@
-use crate::bytecode::Inst;
+use crate::bytecode::{Inst, Prog};
 
-pub fn eval(prog: Vec<Inst>) -> Option<i32> {
+pub fn eval(prog: Prog) -> Option<i32> {
     let mut stack = vec![];
 
-    for inst in prog {
+    let mut variables = vec![0; prog.variables];
+
+    for inst in prog.insts {
         match inst {
             Inst::Push(n) => stack.push(n),
             Inst::Add => {
@@ -25,6 +27,14 @@ pub fn eval(prog: Vec<Inst>) -> Option<i32> {
                 let y = stack.pop()?;
                 let x = stack.pop()?;
                 stack.push(x / y)
+            }
+            Inst::Set(n) => {
+                let val = stack.pop()?;
+                variables[n] = val;
+            }
+            Inst::Get(n) => {
+                let val = variables[n];
+                stack.push(val);
             }
         }
     }
