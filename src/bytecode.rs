@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 #[derive(Debug)]
 pub enum Inst {
     Push(i32),
@@ -8,10 +10,17 @@ pub enum Inst {
 
     Set(usize),
     Get(usize),
+
+    Call(String, usize),
+}
+
+#[derive(Debug)]
+pub struct Func {
+    pub insts: Vec<Inst>,
+    pub variables: usize,
 }
 
 #[derive(Debug)]
 pub struct Prog {
-    pub insts: Vec<Inst>,
-    pub variables: usize,
+    pub funcs: HashMap<String, Func>,
 }

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     ast::Expr,
-    bytecode::{Inst, Prog},
+    bytecode::{Func, Inst},
 };
 
 pub struct Builder {
@@ -57,24 +57,31 @@ impl Builder {
                 let id = self.get_var(&x);
                 self.push_inst(Inst::Get(id));
             }
+            Expr::FnCall(name, args) => {
+                let n = args.len();
+                for arg in args {
+                    self.lower(arg);
+                }
+                self.push_inst(Inst::Call(name, n));
+            }
         }
     }
 
-    pub fn finish(self) -> Prog {
-        Prog {
+    pub fn finish(self) -> Func {
+        Func {
             insts: self.insts,
             variables: self.counter,
         }
     }
 
-    fn new_var(&mut self, x: String) -> usize {
+    pub fn new_var(&mut self, x: String) -> usize {
         let id = self.counter;
         self.variable_map.insert(x, id);
         self.counter += 1;
         id
     }
 
-    fn get_var(&self, x: &str) -> usize {
+    pub fn get_var(&self, x: &str) -> usize {
         *self.variable_map.get(x).unwrap()
     }
 }
