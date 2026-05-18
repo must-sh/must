@@ -1,43 +1,65 @@
-use crate::bytecode::{Inst, Prog};
+use std::collections::HashMap;
 
-pub fn eval(prog: Prog) -> Option<i32> {
-    let mut stack = vec![];
+use crate::bytecode::{Func, Inst};
 
-    let mut variables = vec![0; prog.variables];
+pub struct VM<'a> {
+    funcs: &'a HashMap<String, Func>,
+    stack: Vec<i32>,
+}
 
-    for inst in prog.insts {
-        match inst {
-            Inst::Push(n) => stack.push(n),
-            Inst::Add => {
-                let y = stack.pop()?;
-                let x = stack.pop()?;
-                stack.push(x + y)
-            }
-            Inst::Sub => {
-                let y = stack.pop()?;
-                let x = stack.pop()?;
-                stack.push(x - y)
-            }
-            Inst::Mul => {
-                let y = stack.pop()?;
-                let x = stack.pop()?;
-                stack.push(x * y)
-            }
-            Inst::Div => {
-                let y = stack.pop()?;
-                let x = stack.pop()?;
-                stack.push(x / y)
-            }
-            Inst::Set(n) => {
-                let val = stack.pop()?;
-                variables[n] = val;
-            }
-            Inst::Get(n) => {
-                let val = variables[n];
-                stack.push(val);
-            }
-        }
+impl<'a> VM<'a> {
+    pub fn new(funcs: &'a HashMap<String, Func>) -> Self {
+        let stack = vec![];
+        Self { funcs, stack }
     }
 
-    stack.pop()
+    pub fn eval_func(&mut self, name: &str, n: usize) -> Option<i32> {
+        let f = self.funcs.get(name)?;
+
+        let mut variables = vec![0; f.variables];
+
+        for i in (0..n).rev() {
+            variables[i] = self.stack.pop()?;
+        }
+
+        for inst in &f.insts {
+            match inst {
+                Inst::Push(n) => self.stack.push(*n),
+                Inst::Add => {
+                    let y = self.stack.pop()?;
+                    let x = self.stack.pop()?;
+                    self.stack.push(x + y)
+                }
+                Inst::Sub => {
+                    let y = self.stack.pop()?;
+                    let x = self.stack.pop()?;
+                    self.stack.push(x - y)
+                }
+                Inst::Mul => {
+                    let y = self.stack.pop()?;
+                    let x = self.stack.pop()?;
+                    self.stack.push(x * y)
+                }
+                Inst::Div => {
+                    let y = self.stack.pop()?;
+                    let x = self.stack.pop()?;
+                    self.stack.push(x / y)
+                }
+                Inst::Set(n) => {
+                    let val = self.stack.pop()?;
+                    variables[*n] = val;
+                }
+                Inst::Get(n) => {
+                    let val = variables[*n];
+                    self.stack.push(val);
+                }
+                Inst::Call(name, n) => {
+                    let ret = self.eval_func(name, *n)?;
+                    self.stack.push(ret)
+                }
+            }
+        }
+
+        self.stack.pop()
+    }
 }

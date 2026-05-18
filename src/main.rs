@@ -1,4 +1,10 @@
-use crate::{lowerer::Builder, vm::eval};
+use std::collections::HashMap;
+
+use crate::{
+    bytecode::{Func, Prog},
+    lowerer::Builder,
+    vm::VM,
+};
 
 mod ast;
 mod bytecode;
@@ -14,15 +20,28 @@ fn main() {
         _ => panic!("i take a filename as argument"),
     };
 
-    let ast = input::parse_file(filename).unwrap().expr;
+    let functions = input::parse_file(filename).unwrap().defs;
 
-    let mut builder = Builder::new();
+    let mut compiled_functions: HashMap<String, Func> = HashMap::new();
 
-    builder.lower(ast);
+    for func in functions {
+        let mut builder = Builder::new();
+        for arg in func.args {
+            builder.new_var(arg);
+        }
+        builder.lower(func.body);
 
-    let prog = builder.finish();
+        let compiled_func = builder.finish();
+        compiled_functions.insert(func.name, compiled_func);
+    }
 
-    let res = eval(prog).unwrap();
+    let prog = Prog {
+        funcs: compiled_functions,
+    };
+
+    let mut vm = VM::new(&prog.funcs);
+
+    let res = vm.eval_func("main", 0).unwrap();
 
     println!("Result: {}", res);
 }

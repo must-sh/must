@@ -1,12 +1,19 @@
 #[derive(Debug)]
 pub struct File {
-    pub expr: Expr,
+    pub defs: Vec<FnDef>,
 }
 
 impl File {
-    pub fn new(expr: Expr) -> Self {
-        Self { expr }
+    pub fn new(defs: Vec<FnDef>) -> Self {
+        Self { defs }
     }
+}
+
+#[derive(Debug)]
+pub struct FnDef {
+    pub name: String,
+    pub args: Vec<String>,
+    pub body: Expr,
 }
 
 #[derive(Debug)]
@@ -18,4 +25,5 @@ pub enum Expr {
     Div(Box<Expr>, Box<Expr>),
     Let(String, Box<Expr>, Box<Expr>),
     Var(String),
+    FnCall(String, Vec<Expr>),
 }

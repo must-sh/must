@@ -1,5 +1,11 @@
 
-let x = 42 in
-let y = 13 in
-let z = x + y in
-z * 2
+fn square(x) {
+    x(2)
+}
+
+fn main() {
+    let x = 42 in
+    let y = 13 in
+    let z = x + y in
+    square(z)
+}
