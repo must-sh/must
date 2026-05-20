@@ -1,3 +1,5 @@
+use crate::tp::Type;
+
 #[derive(Debug)]
 pub struct File {
     pub defs: Vec<FnDef>,
@@ -12,8 +14,9 @@ impl File {
 #[derive(Debug)]
 pub struct FnDef {
     pub name: String,
-    pub args: Vec<String>,
+    pub args: Vec<(String, Type)>,
     pub body: Expr,
+    pub ret: Type,
 }
 
 #[derive(Debug)]
