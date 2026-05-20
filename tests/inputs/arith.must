@@ -1,9 +1,9 @@
 
-fn square(x) {
-    x(2)
+fn square(x: int) -> int {
+    x * x
 }
 
-fn main() {
+fn main() -> int {
     let x = 42 in
     let y = 13 in
     let z = x + y in

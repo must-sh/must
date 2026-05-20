@@ -1,4 +1,5 @@
 use crate::ast::*;
+use crate::tp::*;
 
 grammar;
 
@@ -20,10 +21,14 @@ pub File: File = {
     <defs: FnDef+> => File::new(defs),
 }
 
+FnArg: (String, Type) = {
+    <id: Ident> ":" <tp: TypeExpr> => (id, tp),
+}
+
 FnDef: FnDef = {
-    "fn" <name: Ident> "(" <args: CommaSep<Ident>> ")" "{"
+    "fn" <name: Ident> "(" <args: CommaSep<FnArg>> ")" "->" <ret: TypeExpr> "{"
         <body: Expr>
-    "}" => FnDef { name, args, body }
+    "}" => FnDef { name, args, body, ret }
 }
 
 Expr: Expr = {
@@ -42,6 +47,10 @@ Expr: Expr = {
     #[precedence(level="3")]
     "let" <id: Ident> "=" <e1: Expr> "in" <e2: Expr> => Expr::Let(id, Box::new(e1), Box::new(e2)),
 };
+
+TypeExpr: Type = {
+    "int" => Type::Int,
+}
 
 Ident: String = {
     r"[a-z]+" => <>.to_string(),
