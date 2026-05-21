@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Inst {
     Push(i32),
     Add,
@@ -14,13 +14,13 @@ pub enum Inst {
     Call(String, usize),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Func {
     pub insts: Vec<Inst>,
     pub variables: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Prog {
     pub funcs: HashMap<String, Func>,
 }
