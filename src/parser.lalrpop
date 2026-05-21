@@ -1,7 +1,8 @@
 use crate::ast::*;
-use crate::tp::*;
+use crate::diagnostic::Diagnostic;
+use salsa::Accumulator;
 
-grammar;
+grammar<'db>(db: &'db dyn salsa::Database);
 
 // ==== Macros =================================================================
 
@@ -17,43 +18,80 @@ CommaSep<T>: Vec<T> = {
 
 // ==== Grammar ================================================================
 
-pub File: File = {
-    <defs: FnDef+> => File::new(defs),
+pub File: File<'db> = {
+    <defs: FnDef+> => File::new(db, defs),
 }
 
-FnArg: (String, Type) = {
+FnArg: (Ident<'db>, TypeExprId<'db>) = {
     <id: Ident> ":" <tp: TypeExpr> => (id, tp),
 }
 
-FnDef: FnDef = {
+FnDef: FnDef<'db> = {
     "fn" <name: Ident> "(" <args: CommaSep<FnArg>> ")" "->" <ret: TypeExpr> "{"
-        <body: Expr>
-    "}" => FnDef { name, args, body, ret }
+        <body: Expr0>
+    "}" => FnDef::new(db, name, args, ret, body)
 }
 
-Expr: Expr = {
-    #[precedence(level="0")]
-    "(" <e: Expr> ")" => e,
-    <id: Ident> => Expr::Var(id),
-    <id: Ident> "(" <args: CommaSep<Expr>> ")" => Expr::FnCall(id, args),
-    <n: Num> => Expr::Number(n),
-    #[precedence(level="1")] #[assoc(side="left")]
-    <x: Expr> "*" <y: Expr> => Expr::Mul(Box::new(x), Box::new(y)),
-    <x: Expr> "/" <y: Expr> => Expr::Div(Box::new(x), Box::new(y)),
-    #[precedence(level="2")] #[assoc(side="left")]
-    <x: Expr> "+" <y: Expr> => Expr::Add(Box::new(x), Box::new(y)),
-    <x: Expr> "-" <y: Expr> => Expr::Sub(Box::new(x), Box::new(y)),
-
-    #[precedence(level="3")]
-    "let" <id: Ident> "=" <e1: Expr> "in" <e2: Expr> => Expr::Let(id, Box::new(e1), Box::new(e2)),
-};
-
-TypeExpr: Type = {
-    "int" => Type::Int,
-}
-
-Ident: String = {
-    r"[a-z]+" => <>.to_string(),
+Ident: Ident<'db> = {
+    r"[a-z]+" => Ident::new(db, <>.to_string()),
 }
 
 Num: i32 = <s: r"[0-9]+"> => s.parse().unwrap();
+
+// ==== Expressions ============================================================
+
+SpannedExpr<Data>: ExprId<'db> = {
+    <l: @L> <data: Data> <r: @R> => {
+        let span = Span::new(db, l, r);
+        ExprId::new(db, data, span)
+    }
+};
+
+Expr0 = SpannedExpr<Expr0Data>;
+Expr10 = SpannedExpr<Expr10Data>;
+Expr20 = SpannedExpr<Expr20Data>;
+Expr30 = SpannedExpr<Expr30Data>;
+
+Expr0Data: ExprData<'db> = {
+    "let" <id: Ident> "=" <e1: Expr0> "in" <e2: Expr0> => ExprData::Let(id, e1, e2),
+    Expr10Data,
+}
+
+Expr10Data: ExprData<'db> = {
+    <x: Expr10> "+" <y: Expr20> => ExprData::Add(x, y),
+    <x: Expr10> "-" <y: Expr20> => ExprData::Sub(x, y),
+    Expr20Data,
+}
+
+Expr20Data: ExprData<'db> = {
+    <x: Expr20> "*" <y: Expr30> => ExprData::Mul(x, y),
+    <x: Expr20> "/" <y: Expr30> => ExprData::Div(x, y),
+    Expr30Data
+}
+
+Expr30Data: ExprData<'db> = {
+    "(" <e: Expr0Data> ")" => e,
+    <id: Ident> => ExprData::Var(id),
+    <id: Ident> "(" <args: CommaSep<Expr0>> ")" => ExprData::FnCall(id, args),
+    <n: Num> => ExprData::Number(n),
+
+    ! => {
+        Diagnostic::parser_error(<>.error).accumulate(db);
+        ExprData::Error
+    }
+};
+
+// ==== Type expressions =======================================================
+
+SpannedTypeExpr<Data>: TypeExprId<'db> = {
+    <l: @L> <data: Data> <r: @R> => {
+        let span = Span::new(db, l, r);
+        TypeExprId::new(db, data, span)
+    }
+};
+
+TypeExpr = SpannedTypeExpr<TypeExprData>;
+
+TypeExprData: TypeExprData<'db> = {
+    "int" => TypeExprData::Int,
+}

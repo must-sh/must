@@ -1,14 +1,20 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fs::read_to_string, process::exit};
+
+use salsa::{Database, DatabaseImpl};
 
 use crate::{
+    ast::{Ident, TypeExprId},
     bytecode::{Func, Prog},
+    diagnostic::Diagnostic,
+    input::Source,
     lowerer::Builder,
-    tp::{Env, FnSig},
+    tp::{Env, FnSig, Type},
     vm::VM,
 };
 
 mod ast;
 mod bytecode;
+mod diagnostic;
 mod input;
 mod lowerer;
 mod tp;
@@ -22,32 +28,52 @@ fn main() {
         _ => panic!("i take a filename as argument"),
     };
 
-    let functions = input::parse_file(filename).unwrap().defs;
+    let db = &DatabaseImpl::new();
 
-    let fn_defs: HashMap<String, FnSig> = get_defs(&functions);
+    let text = read_to_string(&filename).expect("couldnt open file");
+
+    let sf = Source::new(db, text.clone());
+
+    let functions = input::parse_file(db, sf).unwrap();
+
+    let diags = input::parse_file::accumulated::<Diagnostic>(db, sf);
+
+    for diag in &diags {
+        diag.as_ariadne_report(&filename)
+            .eprint((&filename, ariadne::Source::from(&text)))
+            .unwrap();
+    }
+
+    if !diags.is_empty() {
+        eprintln!("errors occured, compilation aborted");
+        exit(-1);
+    }
+
+    let fn_defs: ModuleDefs<'_> = get_defs(db, sf);
 
     println!("{:#?}", fn_defs);
 
-    for func in &functions {
-        let mut env: Env = Env::new(&fn_defs);
-        for (arg, tp) in &func.args {
-            env.add_var(arg.clone(), tp.clone())
+    for func in functions.defs(db) {
+        let mut env: Env = Env::new(db, &fn_defs.defs);
+        for (arg, tp) in func.args(db) {
+            env.add_var(arg, parse_type_expr(db, tp))
         }
-        env.check_expr(&func.body, &func.ret)
+        let ret_tp = parse_type_expr(db, func.ret(db));
+        env.check_expr(func.body(db), &ret_tp)
             .expect("function body doesnt match its declared type");
     }
 
     let mut compiled_functions: HashMap<String, Func> = HashMap::new();
 
-    for func in functions {
-        let mut builder = Builder::new();
-        for (arg, _) in func.args {
+    for func in functions.defs(db) {
+        let mut builder = Builder::new(db);
+        for (arg, _) in func.args(db) {
             builder.new_var(arg);
         }
-        builder.lower(func.body);
+        builder.lower(func.body(db));
 
         let compiled_func = builder.finish();
-        compiled_functions.insert(func.name, compiled_func);
+        compiled_functions.insert(func.name(db).text(db).clone(), compiled_func);
     }
 
     let prog = Prog {
@@ -61,15 +87,35 @@ fn main() {
     println!("Result: {}", res);
 }
 
-fn get_defs(functions: &[ast::FnDef]) -> HashMap<String, FnSig> {
-    let mut def_map = HashMap::new();
+#[salsa::tracked]
+fn parse_type_expr<'db>(db: &'db dyn Database, tp: TypeExprId<'db>) -> Type {
+    match tp.data(db) {
+        ast::TypeExprData::Int => Type::Int,
+        ast::TypeExprData::Fn(type_expr_ids, type_expr_id) => todo!(),
+    }
+}
 
-    for func in functions {
-        let args = func.args.iter().map(|(_, tp)| tp.clone()).collect();
-        let ret = Box::new(func.ret.clone());
+#[derive(Debug, PartialEq, Eq, Clone, salsa::Update)]
+pub struct ModuleDefs<'db> {
+    defs: HashMap<Ident<'db>, FnSig>,
+}
+
+#[salsa::tracked]
+fn get_defs<'db>(db: &'db dyn Database, sf: Source) -> ModuleDefs<'db> {
+    let mut defs = HashMap::new();
+
+    let file = input::parse_file(db, sf).unwrap();
+
+    for func in file.defs(db) {
+        let args = func
+            .args(db)
+            .into_iter()
+            .map(|(_, tp)| parse_type_expr(db, tp))
+            .collect();
+        let ret = Box::new(parse_type_expr(db, func.ret(db)));
         let sig = FnSig { args, ret };
-        def_map.insert(func.name.clone(), sig);
+        defs.insert(func.name(db), sig);
     }
 
-    def_map
+    ModuleDefs { defs }
 }
