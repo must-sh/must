@@ -13,10 +13,12 @@ pub struct File<'db> {
 
 #[salsa::tracked(debug)]
 pub struct FnDef<'db> {
+    pub is_ext: bool,
     pub name: Ident<'db>,
+    pub span: Span<'db>,
     pub args: Vec<(Ident<'db>, TypeExprId<'db>)>,
     pub ret: TypeExprId<'db>,
-    pub body: ExprId<'db>,
+    pub body: Option<ExprId<'db>>,
 }
 
 #[salsa::interned(debug)]
