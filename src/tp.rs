@@ -1,14 +1,29 @@
 use std::collections::HashMap;
 
-use salsa::Database;
+use salsa::{Accumulator, Database};
 
-use crate::ast::{ExprData, ExprId, Ident};
+use crate::{
+    ast::{ExprData, ExprId, Ident, Span},
+    diagnostic::Diagnostic,
+};
 
-#[derive(Debug, PartialEq, Eq, Clone, salsa::Update)]
+#[derive(Debug, Eq, Clone, salsa::Update)]
 pub enum Type {
-    Int,
     Error,
+
+    Int,
     Fn(FnSig),
+}
+
+impl PartialEq for Type {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (_, Type::Error) | (Type::Error, _) => true,
+            (Type::Int, Type::Int) => true,
+            (Self::Fn(l0), Self::Fn(r0)) => l0 == r0,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, salsa::Update)]
@@ -23,6 +38,28 @@ pub struct Env<'a> {
     db: &'a dyn Database,
 }
 
+impl Diagnostic {
+    pub fn type_mismatch(db: &dyn Database, span: Span, exp: Type, got: Type) -> Diagnostic {
+        Diagnostic::error(
+            db,
+            span,
+            format!("type mismatch. expected: {:?}, got: {:?}", exp, got),
+        )
+    }
+
+    pub fn missing_argument(db: &dyn Database, id: usize, span: Span, tp: Type) -> Self {
+        Diagnostic::error(db, span, format!("missing arg #{} of type {:?}", id, tp))
+    }
+
+    pub fn unexpected_argument(db: &dyn Database, id: usize, span: Span) -> Self {
+        Diagnostic::error(db, span, format!("unexpected arg #{}", id))
+    }
+
+    pub fn unbound_var(db: &dyn Database, span: Span, name: &str) -> Self {
+        Diagnostic::error(db, span, format!("unbound var: {:?}", name))
+    }
+}
+
 impl<'a> Env<'a> {
     pub fn new(db: &'a dyn Database, function_defs: &'a HashMap<Ident<'a>, FnSig>) -> Self {
         let type_map = HashMap::new();
@@ -33,44 +70,75 @@ impl<'a> Env<'a> {
         }
     }
 
-    pub fn infer_expr(&mut self, e: ExprId<'a>) -> Option<Type> {
+    pub fn infer_expr(&mut self, e: ExprId<'a>) -> Type {
         match e.data(self.db) {
-            ExprData::Number(_) => Some(Type::Int),
+            ExprData::Number(_) => Type::Int,
             ExprData::Add(expr, expr1)
             | ExprData::Sub(expr, expr1)
             | ExprData::Mul(expr, expr1)
             | ExprData::Div(expr, expr1) => {
-                self.check_expr(expr, &Type::Int)?;
-                self.check_expr(expr1, &Type::Int)?;
-                Some(Type::Int)
+                self.check_expr(expr, &Type::Int);
+                self.check_expr(expr1, &Type::Int);
+                Type::Int
             }
             ExprData::Let(x, e1, e2) => {
-                let tp1 = self.infer_expr(e1)?;
+                let tp1 = self.infer_expr(e1);
                 self.type_map.insert(x, tp1);
                 self.infer_expr(e2)
             }
-            ExprData::Var(x) => self.type_map.get(&x).cloned(),
+            ExprData::Var(x) => match self.get_var(x) {
+                Some(tp) => tp.clone(),
+                None => {
+                    Diagnostic::unbound_var(self.db, e.span(self.db), x.text(self.db))
+                        .accumulate(self.db);
+                    Type::Error
+                }
+            },
             ExprData::FnCall(fn_name, exprs) => {
-                let sig = self.function_defs.get(&fn_name)?;
+                let sig = match self.function_defs.get(&fn_name) {
+                    Some(sig) => sig,
+                    None => return Type::Error,
+                };
                 let mut tp_args = sig.args.iter();
+                let mut id = 0;
                 for e in exprs {
-                    self.check_expr(e, tp_args.next()?)?;
+                    id += 1;
+                    let exp_tp = match tp_args.next() {
+                        Some(tp) => tp,
+                        None => {
+                            Diagnostic::unexpected_argument(self.db, id, e.span(self.db))
+                                .accumulate(self.db);
+                            continue;
+                        }
+                    };
+                    self.check_expr(e, exp_tp);
                 }
-                if let Some(_) = tp_args.next() {
-                    return None;
+                if let Some(tp) = tp_args.next() {
+                    Diagnostic::missing_argument(self.db, id, e.span(self.db), tp.clone())
+                        .accumulate(self.db);
                 }
-                Some(*sig.ret.clone())
+                *sig.ret.clone()
             }
-            ExprData::Error => Some(Type::Error),
+            ExprData::Error => Type::Error,
         }
     }
 
-    pub fn check_expr(&mut self, e: ExprId<'a>, tp: &Type) -> Option<()> {
-        let tp_inferred = self.infer_expr(e)?;
-        if tp_inferred == *tp { Some(()) } else { None }
+    pub fn check_expr(&mut self, e: ExprId<'a>, tp: &Type) {
+        let tp_inferred = self.infer_expr(e);
+        if !(tp_inferred == *tp) {
+            Diagnostic::type_mismatch(self.db, e.span(self.db), tp.clone(), tp_inferred)
+                .accumulate(self.db);
+        }
     }
 
     pub(crate) fn add_var(&mut self, arg: Ident<'a>, tp: Type) {
         self.type_map.insert(arg, tp);
+    }
+
+    pub fn get_var(&self, x: Ident<'a>) -> Option<Type> {
+        self.type_map
+            .get(&x)
+            .cloned()
+            .or_else(|| self.function_defs.get(&x).cloned().map(Type::Fn))
     }
 }

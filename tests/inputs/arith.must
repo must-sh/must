@@ -5,7 +5,7 @@ fn square(x: int) -> int {
 
 fn main() -> int {
     let x = 42 in
-    let y =  in
-    let z = x + y in
+    let y = 13 in
+    let z = square(4) + y in
     square(z)
 }

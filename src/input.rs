@@ -1,5 +1,3 @@
-use std::{fs::read_to_string, path::Path};
-
 use salsa::Database;
 
 use crate::{ast::File, parser};
