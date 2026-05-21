@@ -1,22 +1,26 @@
 use std::collections::HashMap;
 
+use salsa::Database;
+
 use crate::{
-    ast::Expr,
+    ast::{ExprData, ExprId, Ident},
     bytecode::{Func, Inst},
 };
 
-pub struct Builder {
+pub struct Builder<'a> {
     insts: Vec<Inst>,
-    variable_map: HashMap<String, usize>,
+    variable_map: HashMap<Ident<'a>, usize>,
     counter: usize,
+    db: &'a dyn Database,
 }
 
-impl Builder {
-    pub fn new() -> Self {
+impl<'a> Builder<'a> {
+    pub fn new(db: &'a dyn Database) -> Self {
         Self {
             insts: vec![],
             variable_map: HashMap::new(),
             counter: 0,
+            db,
         }
     }
 
@@ -24,46 +28,47 @@ impl Builder {
         self.insts.push(inst);
     }
 
-    pub fn lower(&mut self, e: Expr) {
-        match e {
-            Expr::Number(n) => self.push_inst(Inst::Push(n)),
-            Expr::Add(expr1, expr2) => {
-                self.lower(*expr1);
-                self.lower(*expr2);
+    pub fn lower(&mut self, e: ExprId<'a>) {
+        match e.data(self.db) {
+            ExprData::Number(n) => self.push_inst(Inst::Push(n)),
+            ExprData::Add(expr1, expr2) => {
+                self.lower(expr1);
+                self.lower(expr2);
                 self.push_inst(Inst::Add);
             }
-            Expr::Sub(expr1, expr2) => {
-                self.lower(*expr1);
-                self.lower(*expr2);
+            ExprData::Sub(expr1, expr2) => {
+                self.lower(expr1);
+                self.lower(expr2);
                 self.push_inst(Inst::Sub);
             }
-            Expr::Mul(expr1, expr2) => {
-                self.lower(*expr1);
-                self.lower(*expr2);
+            ExprData::Mul(expr1, expr2) => {
+                self.lower(expr1);
+                self.lower(expr2);
                 self.push_inst(Inst::Mul);
             }
-            Expr::Div(expr1, expr2) => {
-                self.lower(*expr1);
-                self.lower(*expr2);
+            ExprData::Div(expr1, expr2) => {
+                self.lower(expr1);
+                self.lower(expr2);
                 self.push_inst(Inst::Div);
             }
-            Expr::Let(x, e1, e2) => {
+            ExprData::Let(x, e1, e2) => {
                 let id = self.new_var(x);
-                self.lower(*e1);
+                self.lower(e1);
                 self.push_inst(Inst::Set(id));
-                self.lower(*e2);
+                self.lower(e2);
             }
-            Expr::Var(x) => {
-                let id = self.get_var(&x);
+            ExprData::Var(x) => {
+                let id = self.get_var(x);
                 self.push_inst(Inst::Get(id));
             }
-            Expr::FnCall(name, args) => {
+            ExprData::FnCall(name, args) => {
                 let n = args.len();
                 for arg in args {
                     self.lower(arg);
                 }
-                self.push_inst(Inst::Call(name, n));
+                self.push_inst(Inst::Call(name.text(self.db).clone(), n));
             }
+            ExprData::Error => panic!("no errors allowed here"),
         }
     }
 
@@ -74,14 +79,14 @@ impl Builder {
         }
     }
 
-    pub fn new_var(&mut self, x: String) -> usize {
+    pub fn new_var(&mut self, x: Ident<'a>) -> usize {
         let id = self.counter;
         self.variable_map.insert(x, id);
         self.counter += 1;
         id
     }
 
-    pub fn get_var(&self, x: &str) -> usize {
-        *self.variable_map.get(x).unwrap()
+    pub fn get_var(&self, x: Ident<'a>) -> usize {
+        *self.variable_map.get(&x).unwrap()
     }
 }

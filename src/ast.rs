@@ -1,32 +1,58 @@
-use crate::tp::Type;
-
-#[derive(Debug)]
-pub struct File {
-    pub defs: Vec<FnDef>,
+#[salsa::tracked(debug)]
+pub struct Span<'db> {
+    #[tracked]
+    pub start_byte: usize,
+    #[tracked]
+    pub end_byte: usize,
 }
 
-impl File {
-    pub fn new(defs: Vec<FnDef>) -> Self {
-        Self { defs }
-    }
+#[salsa::tracked(debug)]
+pub struct File<'db> {
+    pub defs: Vec<FnDef<'db>>,
 }
 
-#[derive(Debug)]
-pub struct FnDef {
-    pub name: String,
-    pub args: Vec<(String, Type)>,
-    pub body: Expr,
-    pub ret: Type,
+#[salsa::tracked(debug)]
+pub struct FnDef<'db> {
+    pub name: Ident<'db>,
+    pub args: Vec<(Ident<'db>, TypeExprId<'db>)>,
+    pub ret: TypeExprId<'db>,
+    pub body: ExprId<'db>,
 }
 
-#[derive(Debug)]
-pub enum Expr {
+#[salsa::interned(debug)]
+pub struct ExprId {
+    pub data: ExprData<'db>,
+    pub span: Span<'db>,
+}
+
+#[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::Update)]
+pub enum ExprData<'db> {
     Number(i32),
-    Add(Box<Expr>, Box<Expr>),
-    Sub(Box<Expr>, Box<Expr>),
-    Mul(Box<Expr>, Box<Expr>),
-    Div(Box<Expr>, Box<Expr>),
-    Let(String, Box<Expr>, Box<Expr>),
-    Var(String),
-    FnCall(String, Vec<Expr>),
+    Add(ExprId<'db>, ExprId<'db>),
+    Sub(ExprId<'db>, ExprId<'db>),
+    Mul(ExprId<'db>, ExprId<'db>),
+    Div(ExprId<'db>, ExprId<'db>),
+    Let(Ident<'db>, ExprId<'db>, ExprId<'db>),
+    Var(Ident<'db>),
+    FnCall(Ident<'db>, Vec<ExprId<'db>>),
+
+    Error,
+}
+
+#[salsa::interned(debug)]
+pub struct TypeExprId {
+    pub data: TypeExprData<'db>,
+    pub span: Span<'db>,
+}
+
+#[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::Update)]
+pub enum TypeExprData<'db> {
+    Int,
+    Fn(Vec<TypeExprId<'db>>, TypeExprId<'db>),
+}
+
+#[salsa::interned(debug)]
+pub struct Ident {
+    #[returns(ref)]
+    pub text: String,
 }
