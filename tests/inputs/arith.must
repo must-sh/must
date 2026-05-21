@@ -1,11 +1,13 @@
 
+extern fn print(x: int) -> int;
+extern fn read() -> int;
+
 fn square(x: int) -> int {
     x * x
 }
 
 fn main() -> int {
-    let x = 42 in
-    let y = 13 in
-    let z = square(4) + y in
-    square(z)
+    let y = print(42) in
+    let x = read() in
+    square(x)
 }

@@ -27,13 +27,29 @@ FnArg: (Ident<'db>, TypeExprId<'db>) = {
 }
 
 FnDef: FnDef<'db> = {
-    "fn" <name: Ident> "(" <args: CommaSep<FnArg>> ")" "->" <ret: TypeExpr> "{"
+    "fn" <l: @L> <name: Ident> <r: @R> "(" <args: CommaSep<FnArg>> ")" "->" <ret: TypeExpr> "{"
         <body: Expr0>
-    "}" => FnDef::new(db, name, args, ret, body)
+    "}" => {
+            let span = Span::new(db, l, r);
+            FnDef::new(db, false, name, span, args, ret, Some(body))
+        },
+
+    "extern" "fn" <l: @L> <name: Ident> <r: @R> "(" <args: CommaSep<FnArg>> ")" "->" <ret: TypeExpr> "{"
+        <body: Expr0>
+    "}" => {
+            let span = Span::new(db, l, r);
+            FnDef::new(db, true, name, span, args, ret, Some(body))
+        },
+
+    "extern" "fn" <l: @L> <name: Ident> <r: @R> "(" <args: CommaSep<FnArg>> ")" "->" <ret: TypeExpr> ";"
+        => {
+            let span = Span::new(db, l, r);
+            FnDef::new(db, true, name, span, args, ret, None)
+        }
 }
 
 Ident: Ident<'db> = {
-    r"[a-z]+" => Ident::new(db, <>.to_string()),
+    r"[a-z]+" => Ident::new(db, <>.to_string())
 }
 
 Num: i32 = <s: r"[0-9]+"> => s.parse().unwrap();

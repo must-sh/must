@@ -2,7 +2,18 @@ use std::collections::HashMap;
 
 use salsa::Database;
 
-use crate::{ast, bytecode, input, lowerer, resolve, tp};
+use crate::{
+    ast::{self, Ident, Span},
+    bytecode,
+    diagnostic::Diagnostic,
+    input, lowerer, resolve, tp,
+};
+
+impl Diagnostic {
+    pub fn missing_body(db: &dyn Database, span: Span, name: &str) -> Diagnostic {
+        Diagnostic::error(db, span, format!("function {name} declared without a body"))
+    }
+}
 
 #[salsa::tracked]
 pub fn type_check_file<'db>(db: &'db dyn Database, sf: input::Source) {
@@ -15,7 +26,10 @@ pub fn type_check_file<'db>(db: &'db dyn Database, sf: input::Source) {
             env.add_var(arg, resolve::parse_type_expr(db, tp))
         }
         let ret_tp = resolve::parse_type_expr(db, func.ret(db));
-        env.check_expr(func.body(db), &ret_tp);
+        match func.body(db) {
+            Some(body) => env.check_expr(body, &ret_tp),
+            None => assert!(func.is_ext(db)),
+        }
     }
 }
 
@@ -24,14 +38,16 @@ pub fn compile<'db>(db: &'db dyn Database, functions: ast::File<'db>) -> bytecod
     let mut compiled_functions: HashMap<String, bytecode::Func> = HashMap::new();
 
     for func in functions.defs(db) {
-        let mut builder = lowerer::Builder::new(db);
-        for (arg, _) in func.args(db) {
-            builder.new_var(arg);
-        }
-        builder.lower(func.body(db));
+        if let Some(body) = func.body(db) {
+            let mut builder = lowerer::Builder::new(db);
+            for (arg, _) in func.args(db) {
+                builder.new_var(arg);
+            }
+            builder.lower(body);
 
-        let compiled_func = builder.finish();
-        compiled_functions.insert(func.name(db).text(db).clone(), compiled_func);
+            let compiled_func = builder.finish();
+            compiled_functions.insert(func.name(db).text(db).clone(), compiled_func);
+        }
     }
 
     let prog = bytecode::Prog {

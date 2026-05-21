@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, io::stdin};
 
 use crate::bytecode::{Func, Inst};
 
@@ -14,7 +14,10 @@ impl<'a> VM<'a> {
     }
 
     pub fn eval_func(&mut self, name: &str, n: usize) -> Option<i32> {
-        let f = self.funcs.get(name)?;
+        let f = match self.funcs.get(name) {
+            Some(f) => f,
+            None => return self.call_intrinsic(name),
+        };
 
         let mut variables = vec![0; f.variables];
 
@@ -61,5 +64,25 @@ impl<'a> VM<'a> {
         }
 
         self.stack.pop()
+    }
+
+    fn call_intrinsic(&mut self, name: &str) -> Option<i32> {
+        match name {
+            "read" => {
+                let mut buf = String::new();
+                stdin().read_line(&mut buf).expect("failed to get input");
+                let val = buf
+                    .trim()
+                    .parse::<i32>()
+                    .expect("this is not a valid integer");
+                Some(val)
+            }
+            "print" => {
+                let val = self.stack.pop()?;
+                println!("{val}");
+                Some(0)
+            }
+            _ => panic!("unknown intrinsic: {name}"),
+        }
     }
 }
