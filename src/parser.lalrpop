@@ -72,6 +72,8 @@ Expr40 = SpannedExpr<Expr40Data>;
 
 Expr0Data: ExprData<'db> = {
     "let" <id: Ident> "=" <e1: Expr0> "in" <e2: Expr0> => ExprData::Let(id, e1, e2),
+    "if" <cond: Expr0> "{" <th: Expr0> "}" "else" "{" <el: Expr0> "}" => ExprData::If(cond, th, el),
+    "while" <cond: Expr0> "{" <body: Expr0> "}" => ExprData::While(cond, body),
     Expr10Data,
 }
 

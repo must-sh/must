@@ -36,6 +36,8 @@ pub enum ExprData<'db> {
     Let(Ident<'db>, ExprId<'db>, ExprId<'db>),
     Var(Ident<'db>),
     FnCall(Ident<'db>, Vec<ExprId<'db>>),
+    If(ExprId<'db>, ExprId<'db>, ExprId<'db>),
+    While(ExprId<'db>, ExprId<'db>),
 
     Error,
 }
