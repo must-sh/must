@@ -129,6 +129,17 @@ impl<'a> Env<'a> {
                 *sig.ret.clone()
             }
             ExprData::Error => Type::Error,
+            ExprData::If(cond, th, el) => {
+                self.check_expr(cond, &Type::Bool);
+                let tp = self.infer_expr(th);
+                self.check_expr(el, &tp);
+                tp
+            }
+            ExprData::While(cond, body) => {
+                self.check_expr(cond, &Type::Bool);
+                self.infer_expr(body);
+                Type::Int
+            }
         }
     }
 

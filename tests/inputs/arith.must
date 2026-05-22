@@ -10,10 +10,10 @@ fn is_even(x: int) -> bool {
     (x / 2) * 2 == x
 }
 
-fn main() -> bool {
-    let y = print(42) in
-    let x = read() in
-    let _ = print(x / 2) in
-    let _ = print((x / 2) * 2) in
-    is_even(square(x))
+fn main() -> int {
+    let _ = while is_even(read()) {
+        print(40)
+    }
+    in
+    9
 }

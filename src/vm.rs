@@ -1,6 +1,8 @@
 use std::{collections::HashMap, io::stdin};
 
-use crate::bytecode::{Func, Inst};
+use salsa::Id;
+
+use crate::bytecode::{Func, Inst, Terminator};
 
 pub struct VM<'a> {
     funcs: &'a HashMap<String, Func>,
@@ -31,38 +33,49 @@ impl<'a> VM<'a> {
             variables[i] = self.stack.pop()?;
         }
 
-        for inst in &f.insts {
-            match inst {
-                Inst::Push(n) => self.stack.push(Value::Int(*n)),
-                Inst::Binop(op) => {
-                    use crate::common::Op::*;
-                    use Value::*;
-                    let res = match (op, self.stack.pop()?, self.stack.pop()?) {
-                        (Add, Int(y), Int(x)) => Int(x + y),
-                        (Sub, Int(y), Int(x)) => Int(x - y),
-                        (Mul, Int(y), Int(x)) => Int(x * y),
-                        (Div, Int(y), Int(x)) => Int(x / y),
-                        (Eq, Int(y), Int(x)) => Bool(x == y),
-                        _ => panic!(),
-                    };
-                    self.stack.push(res)
-                }
-                Inst::Set(n) => {
-                    let val = self.stack.pop()?;
-                    variables[*n] = val;
-                }
-                Inst::Get(n) => {
-                    let val = variables[*n];
-                    self.stack.push(val);
-                }
-                Inst::Call(name, n) => {
-                    let ret = self.eval_func(name, *n)?;
-                    self.stack.push(ret)
+        let mut current_block = 0;
+        loop {
+            for inst in &f.blocks[current_block].insts {
+                match inst {
+                    Inst::Push(n) => self.stack.push(Value::Int(*n)),
+                    Inst::Binop(op) => {
+                        use crate::common::Op::*;
+                        use Value::*;
+                        let res = match (op, self.stack.pop()?, self.stack.pop()?) {
+                            (Add, Int(y), Int(x)) => Int(x + y),
+                            (Sub, Int(y), Int(x)) => Int(x - y),
+                            (Mul, Int(y), Int(x)) => Int(x * y),
+                            (Div, Int(y), Int(x)) => Int(x / y),
+                            (Eq, Int(y), Int(x)) => Bool(x == y),
+                            _ => panic!(),
+                        };
+                        self.stack.push(res)
+                    }
+                    Inst::Set(n) => {
+                        let val = self.stack.pop()?;
+                        variables[*n] = val;
+                    }
+                    Inst::Get(n) => {
+                        let val = variables[*n];
+                        self.stack.push(val);
+                    }
+                    Inst::Call(name, n) => {
+                        let ret = self.eval_func(name, *n)?;
+                        self.stack.push(ret)
+                    }
                 }
             }
-        }
 
-        self.stack.pop()
+            match &f.blocks[current_block].terminator {
+                Terminator::Jmp(id) => current_block = *id,
+                Terminator::Br(th, el) => {
+                    if let Value::Bool(cond) = self.stack.pop()? {
+                        current_block = if cond { *th } else { *el };
+                    }
+                }
+                Terminator::Ret => return self.stack.pop(),
+            }
+        }
     }
 
     fn call_intrinsic(&mut self, name: &str) -> Option<Value> {
