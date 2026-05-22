@@ -31,25 +31,10 @@ impl<'a> Builder<'a> {
     pub fn lower(&mut self, e: ExprId<'a>) {
         match e.data(self.db) {
             ExprData::Number(n) => self.push_inst(Inst::Push(n)),
-            ExprData::Add(expr1, expr2) => {
+            ExprData::Binop(op, expr1, expr2) => {
                 self.lower(expr1);
                 self.lower(expr2);
-                self.push_inst(Inst::Add);
-            }
-            ExprData::Sub(expr1, expr2) => {
-                self.lower(expr1);
-                self.lower(expr2);
-                self.push_inst(Inst::Sub);
-            }
-            ExprData::Mul(expr1, expr2) => {
-                self.lower(expr1);
-                self.lower(expr2);
-                self.push_inst(Inst::Mul);
-            }
-            ExprData::Div(expr1, expr2) => {
-                self.lower(expr1);
-                self.lower(expr2);
-                self.push_inst(Inst::Div);
+                self.push_inst(Inst::Binop(op));
             }
             ExprData::Let(x, e1, e2) => {
                 let id = self.new_var(x);

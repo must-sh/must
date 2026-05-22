@@ -17,7 +17,7 @@ impl Diagnostic {
 
 #[salsa::tracked]
 pub fn type_check_file<'db>(db: &'db dyn Database, sf: input::Source) {
-    let functions = input::parse_file(db, sf).unwrap();
+    let functions = input::parse_file(db, sf);
     let fn_defs: resolve::ModuleDefs<'_> = resolve::get_defs(db, sf);
 
     for func in functions.defs(db) {

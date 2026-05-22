@@ -10,6 +10,7 @@ use std::collections::HashMap;
 pub(crate) fn parse_type_expr<'db>(db: &'db dyn Database, tp: TypeExprId<'db>) -> Type {
     match tp.data(db) {
         ast::TypeExprData::Int => Type::Int,
+        ast::TypeExprData::Bool => Type::Bool,
         ast::TypeExprData::Fn(args, ret) => {
             let args = args
                 .into_iter()
@@ -31,7 +32,7 @@ pub struct ModuleDefs<'db> {
 pub(crate) fn get_defs<'db>(db: &'db dyn Database, sf: Source) -> ModuleDefs<'db> {
     let mut defs = HashMap::new();
 
-    let file = input::parse_file(db, sf).unwrap();
+    let file = input::parse_file(db, sf);
 
     for func in file.defs(db) {
         let args = func

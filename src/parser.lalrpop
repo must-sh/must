@@ -1,6 +1,7 @@
 use crate::ast::*;
 use crate::diagnostic::Diagnostic;
 use salsa::Accumulator;
+use crate::common::Op;
 
 grammar<'db>(db: &'db dyn salsa::Database);
 
@@ -49,7 +50,7 @@ FnDef: FnDef<'db> = {
 }
 
 Ident: Ident<'db> = {
-    r"[a-z]+" => Ident::new(db, <>.to_string())
+    r"[a-z_]+" => Ident::new(db, <>.to_string())
 }
 
 Num: i32 = <s: r"[0-9]+"> => s.parse().unwrap();
@@ -67,6 +68,7 @@ Expr0 = SpannedExpr<Expr0Data>;
 Expr10 = SpannedExpr<Expr10Data>;
 Expr20 = SpannedExpr<Expr20Data>;
 Expr30 = SpannedExpr<Expr30Data>;
+Expr40 = SpannedExpr<Expr40Data>;
 
 Expr0Data: ExprData<'db> = {
     "let" <id: Ident> "=" <e1: Expr0> "in" <e2: Expr0> => ExprData::Let(id, e1, e2),
@@ -74,18 +76,23 @@ Expr0Data: ExprData<'db> = {
 }
 
 Expr10Data: ExprData<'db> = {
-    <x: Expr10> "+" <y: Expr20> => ExprData::Add(x, y),
-    <x: Expr10> "-" <y: Expr20> => ExprData::Sub(x, y),
+    <x: Expr10> "==" <y: Expr20> => ExprData::Binop(Op::Eq, x, y),
     Expr20Data,
 }
 
 Expr20Data: ExprData<'db> = {
-    <x: Expr20> "*" <y: Expr30> => ExprData::Mul(x, y),
-    <x: Expr20> "/" <y: Expr30> => ExprData::Div(x, y),
-    Expr30Data
+    <x: Expr20> "+" <y: Expr30> => ExprData::Binop(Op::Add, x, y),
+    <x: Expr20> "-" <y: Expr30> => ExprData::Binop(Op::Sub, x, y),
+    Expr30Data,
 }
 
 Expr30Data: ExprData<'db> = {
+    <x: Expr30> "*" <y: Expr40> => ExprData::Binop(Op::Mul, x, y),
+    <x: Expr30> "/" <y: Expr40> => ExprData::Binop(Op::Div, x, y),
+    Expr40Data
+}
+
+Expr40Data: ExprData<'db> = {
     "(" <e: Expr0Data> ")" => e,
     <id: Ident> => ExprData::Var(id),
     <id: Ident> "(" <args: CommaSep<Expr0>> ")" => ExprData::FnCall(id, args),
@@ -110,4 +117,5 @@ TypeExpr = SpannedTypeExpr<TypeExprData>;
 
 TypeExprData: TypeExprData<'db> = {
     "int" => TypeExprData::Int,
+    "bool" => TypeExprData::Bool,
 }

@@ -6,6 +6,7 @@ use crate::{diagnostic::Diagnostic, input::Source, vm::VM};
 
 mod ast;
 mod bytecode;
+mod common;
 mod diagnostic;
 mod driver;
 mod input;
@@ -28,7 +29,7 @@ fn main() {
 
     let sf = Source::new(db, text.clone());
 
-    let functions = input::parse_file(db, sf).unwrap();
+    let functions = input::parse_file(db, sf);
 
     driver::type_check_file(db, sf);
 
@@ -51,5 +52,5 @@ fn main() {
 
     let res = vm.eval_func("main", 0).unwrap();
 
-    println!("Result: {}", res);
+    println!("Result: {:?}", res);
 }

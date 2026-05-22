@@ -12,6 +12,7 @@ pub enum Type {
     Error,
 
     Int,
+    Bool,
     Fn(FnSig),
 }
 
@@ -20,6 +21,7 @@ impl PartialEq for Type {
         match (self, other) {
             (_, Type::Error) | (Type::Error, _) => true,
             (Type::Int, Type::Int) => true,
+            (Type::Bool, Type::Bool) => true,
             (Self::Fn(l0), Self::Fn(r0)) => l0 == r0,
             _ => false,
         }
@@ -73,13 +75,20 @@ impl<'a> Env<'a> {
     pub fn infer_expr(&mut self, e: ExprId<'a>) -> Type {
         match e.data(self.db) {
             ExprData::Number(_) => Type::Int,
-            ExprData::Add(expr, expr1)
-            | ExprData::Sub(expr, expr1)
-            | ExprData::Mul(expr, expr1)
-            | ExprData::Div(expr, expr1) => {
-                self.check_expr(expr, &Type::Int);
-                self.check_expr(expr1, &Type::Int);
-                Type::Int
+            ExprData::Binop(op, expr, expr1) => {
+                use crate::common::Op::*;
+                match op {
+                    Add | Sub | Mul | Div => {
+                        self.check_expr(expr, &Type::Int);
+                        self.check_expr(expr1, &Type::Int);
+                        Type::Int
+                    }
+                    Eq => {
+                        self.check_expr(expr, &Type::Int);
+                        self.check_expr(expr1, &Type::Int);
+                        Type::Bool
+                    }
+                }
             }
             ExprData::Let(x, e1, e2) => {
                 let tp1 = self.infer_expr(e1);
