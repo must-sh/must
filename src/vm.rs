@@ -4,7 +4,13 @@ use crate::bytecode::{Func, Inst};
 
 pub struct VM<'a> {
     funcs: &'a HashMap<String, Func>,
-    stack: Vec<i32>,
+    stack: Vec<Value>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Value {
+    Int(i32),
+    Bool(bool),
 }
 
 impl<'a> VM<'a> {
@@ -13,13 +19,13 @@ impl<'a> VM<'a> {
         Self { funcs, stack }
     }
 
-    pub fn eval_func(&mut self, name: &str, n: usize) -> Option<i32> {
+    pub fn eval_func(&mut self, name: &str, n: usize) -> Option<Value> {
         let f = match self.funcs.get(name) {
             Some(f) => f,
             None => return self.call_intrinsic(name),
         };
 
-        let mut variables = vec![0; f.variables];
+        let mut variables = vec![Value::Int(0); f.variables];
 
         for i in (0..n).rev() {
             variables[i] = self.stack.pop()?;
@@ -27,26 +33,19 @@ impl<'a> VM<'a> {
 
         for inst in &f.insts {
             match inst {
-                Inst::Push(n) => self.stack.push(*n),
-                Inst::Add => {
-                    let y = self.stack.pop()?;
-                    let x = self.stack.pop()?;
-                    self.stack.push(x + y)
-                }
-                Inst::Sub => {
-                    let y = self.stack.pop()?;
-                    let x = self.stack.pop()?;
-                    self.stack.push(x - y)
-                }
-                Inst::Mul => {
-                    let y = self.stack.pop()?;
-                    let x = self.stack.pop()?;
-                    self.stack.push(x * y)
-                }
-                Inst::Div => {
-                    let y = self.stack.pop()?;
-                    let x = self.stack.pop()?;
-                    self.stack.push(x / y)
+                Inst::Push(n) => self.stack.push(Value::Int(*n)),
+                Inst::Binop(op) => {
+                    use crate::common::Op::*;
+                    use Value::*;
+                    let res = match (op, self.stack.pop()?, self.stack.pop()?) {
+                        (Add, Int(y), Int(x)) => Int(x + y),
+                        (Sub, Int(y), Int(x)) => Int(x - y),
+                        (Mul, Int(y), Int(x)) => Int(x * y),
+                        (Div, Int(y), Int(x)) => Int(x / y),
+                        (Eq, Int(y), Int(x)) => Bool(x == y),
+                        _ => panic!(),
+                    };
+                    self.stack.push(res)
                 }
                 Inst::Set(n) => {
                     let val = self.stack.pop()?;
@@ -66,7 +65,7 @@ impl<'a> VM<'a> {
         self.stack.pop()
     }
 
-    fn call_intrinsic(&mut self, name: &str) -> Option<i32> {
+    fn call_intrinsic(&mut self, name: &str) -> Option<Value> {
         match name {
             "read" => {
                 let mut buf = String::new();
@@ -75,12 +74,12 @@ impl<'a> VM<'a> {
                     .trim()
                     .parse::<i32>()
                     .expect("this is not a valid integer");
-                Some(val)
+                Some(Value::Int(val))
             }
             "print" => {
                 let val = self.stack.pop()?;
-                println!("{val}");
-                Some(0)
+                println!("{val:?}");
+                Some(Value::Int(0))
             }
             _ => panic!("unknown intrinsic: {name}"),
         }

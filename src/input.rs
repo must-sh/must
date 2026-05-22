@@ -1,6 +1,6 @@
-use salsa::Database;
+use salsa::{Accumulator, Database};
 
-use crate::{ast::File, parser};
+use crate::{ast::File, diagnostic::Diagnostic, parser};
 
 #[salsa::input]
 pub struct Source {
@@ -9,7 +9,13 @@ pub struct Source {
 }
 
 #[salsa::tracked]
-pub fn parse_file<'db>(db: &'db dyn Database, source: Source) -> Option<File<'db>> {
+pub fn parse_file<'db>(db: &'db dyn Database, source: Source) -> File<'db> {
     let parser = parser::FileParser::new();
-    parser.parse(db, source.text(db)).ok()
+    match parser.parse(db, source.text(db)) {
+        Ok(file) => file,
+        Err(e) => {
+            Diagnostic::parser_error(e).accumulate(db);
+            File::new(db, vec![])
+        }
+    }
 }

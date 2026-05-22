@@ -6,8 +6,14 @@ fn square(x: int) -> int {
     x * x
 }
 
-fn main() -> int {
+fn is_even(x: int) -> bool {
+    (x / 2) * 2 == x
+}
+
+fn main() -> bool {
     let y = print(42) in
     let x = read() in
-    square(x)
+    let _ = print(x / 2) in
+    let _ = print((x / 2) * 2) in
+    is_even(square(x))
 }

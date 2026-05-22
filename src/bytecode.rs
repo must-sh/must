@@ -1,12 +1,11 @@
 use std::collections::HashMap;
 
+use crate::common::Op;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Inst {
     Push(i32),
-    Add,
-    Sub,
-    Mul,
-    Div,
+    Binop(Op),
 
     Set(usize),
     Get(usize),

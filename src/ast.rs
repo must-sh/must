@@ -1,3 +1,5 @@
+use crate::common::Op;
+
 #[salsa::tracked(debug)]
 pub struct Span<'db> {
     #[tracked]
@@ -30,10 +32,7 @@ pub struct ExprId {
 #[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::Update)]
 pub enum ExprData<'db> {
     Number(i32),
-    Add(ExprId<'db>, ExprId<'db>),
-    Sub(ExprId<'db>, ExprId<'db>),
-    Mul(ExprId<'db>, ExprId<'db>),
-    Div(ExprId<'db>, ExprId<'db>),
+    Binop(Op, ExprId<'db>, ExprId<'db>),
     Let(Ident<'db>, ExprId<'db>, ExprId<'db>),
     Var(Ident<'db>),
     FnCall(Ident<'db>, Vec<ExprId<'db>>),
@@ -50,6 +49,7 @@ pub struct TypeExprId {
 #[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::Update)]
 pub enum TypeExprData<'db> {
     Int,
+    Bool,
     Fn(Vec<TypeExprId<'db>>, TypeExprId<'db>),
 }
 
