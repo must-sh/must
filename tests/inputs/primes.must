@@ -1,0 +1,37 @@
+
+extern fn print(x: int) -> int;
+extern fn read() -> int;
+
+fn square(x: int) -> int {
+    x * x
+}
+
+fn false() -> bool {
+    0 == 1
+}
+
+fn true() -> bool {
+    0 == 0
+}
+
+fn is_prime(x: int) -> bool {
+    let mut res = true() in
+    let mut n = 2 in
+    let _ = while square(n) < x + 1 {
+        let _ = if (x / n) * n == x {
+            res = false()
+        } else {
+            true()
+        } in
+        n = n + 1
+    } in
+    res
+}
+
+fn main() -> int {
+    let mut i = 2 in
+    while i < 30 {
+        let _ = if is_prime(i) { print(i) } else { 0 } in
+        i = i + 1
+    }
+}

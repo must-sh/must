@@ -10,7 +10,7 @@ pub enum Inst {
     Set(usize),
     Get(usize),
 
-    Call(String, usize),
+    Call(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
