@@ -23,11 +23,13 @@ pub fn type_check_file<'db>(db: &'db dyn Database, sf: input::Source) {
     for func in functions.defs(db) {
         let mut env: tp::Env = tp::Env::new(db, &fn_defs.defs);
         for (arg, tp) in func.args(db) {
-            env.add_var(arg, resolve::parse_type_expr(db, tp))
+            let tp = resolve::parse_type_expr(db, tp);
+            let bindings = env.check_pat(arg, tp);
+            env.extend(bindings);
         }
         let ret_tp = resolve::parse_type_expr(db, func.ret(db));
         match func.body(db) {
-            Some(body) => env.check_expr(body, &ret_tp),
+            Some(body) => env.check_expr(body, &ret_tp, false),
             None => assert!(func.is_ext(db)),
         }
     }
@@ -41,7 +43,7 @@ pub fn compile<'db>(db: &'db dyn Database, functions: ast::File<'db>) -> bytecod
         if let Some(body) = func.body(db) {
             let mut builder = lowerer::Builder::new(db);
             for (arg, _) in func.args(db) {
-                builder.new_var(arg);
+                builder.lower_pat(arg);
             }
             builder.lower(body);
 

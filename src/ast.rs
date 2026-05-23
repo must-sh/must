@@ -18,7 +18,7 @@ pub struct FnDef<'db> {
     pub is_ext: bool,
     pub name: Ident<'db>,
     pub span: Span<'db>,
-    pub args: Vec<(Ident<'db>, TypeExprId<'db>)>,
+    pub args: Vec<(PatternId<'db>, TypeExprId<'db>)>,
     pub ret: TypeExprId<'db>,
     pub body: Option<ExprId<'db>>,
 }
@@ -33,13 +33,26 @@ pub struct ExprId {
 pub enum ExprData<'db> {
     Number(i32),
     Binop(Op, ExprId<'db>, ExprId<'db>),
-    Let(Ident<'db>, ExprId<'db>, ExprId<'db>),
+    Let(PatternId<'db>, ExprId<'db>, ExprId<'db>),
     Var(Ident<'db>),
     FnCall(Ident<'db>, Vec<ExprId<'db>>),
     If(ExprId<'db>, ExprId<'db>, ExprId<'db>),
     While(ExprId<'db>, ExprId<'db>),
+    Assign(ExprId<'db>, ExprId<'db>),
 
     Error,
+}
+
+#[salsa::interned(debug)]
+pub struct PatternId {
+    pub data: PatternData<'db>,
+    pub span: Span<'db>,
+}
+
+#[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::Update)]
+pub enum PatternData<'db> {
+    Wildcard,
+    Var(Ident<'db>, bool),
 }
 
 #[salsa::interned(debug)]
