@@ -29,10 +29,6 @@ impl<'a> VM<'a> {
 
         let mut variables = vec![Value::Int(0); f.variables];
 
-        for i in (0..n).rev() {
-            variables[i] = self.stack.pop()?;
-        }
-
         let mut current_block = 0;
         loop {
             for inst in &f.blocks[current_block].insts {
@@ -47,6 +43,7 @@ impl<'a> VM<'a> {
                             (Mul, Int(y), Int(x)) => Int(x * y),
                             (Div, Int(y), Int(x)) => Int(x / y),
                             (Eq, Int(y), Int(x)) => Bool(x == y),
+                            (Lt, Int(y), Int(x)) => Bool(x < y),
                             _ => panic!(),
                         };
                         self.stack.push(res)

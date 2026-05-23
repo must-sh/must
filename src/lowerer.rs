@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use salsa::Database;
 
 use crate::{
-    ast::{ExprData, ExprId, Ident},
+    ast::{ExprData, ExprId, Ident, PatternData, PatternId},
     bytecode::{Block, Func, Inst, Terminator},
 };
 
@@ -38,10 +38,9 @@ impl<'a> Builder<'a> {
                 self.lower(expr2);
                 self.push_inst(Inst::Binop(op));
             }
-            ExprData::Let(x, e1, e2) => {
-                let id = self.new_var(x);
+            ExprData::Let(pat, e1, e2) => {
                 self.lower(e1);
-                self.push_inst(Inst::Set(id));
+                self.lower_pat(pat);
                 self.lower(e2);
             }
             ExprData::Var(x) => {
@@ -50,7 +49,7 @@ impl<'a> Builder<'a> {
             }
             ExprData::FnCall(name, args) => {
                 let n = args.len();
-                for arg in args {
+                for arg in args.into_iter().rev() {
                     self.lower(arg);
                 }
                 self.push_inst(Inst::Call(name.text(self.db).clone(), n));
@@ -90,6 +89,41 @@ impl<'a> Builder<'a> {
                 self.terminate_current_block(Terminator::Jmp(cond_block));
 
                 self.switch_to_block(next_block);
+            }
+            ExprData::Assign(e1, e2) => {
+                let id = self.lower_place(e1);
+                self.lower(e2);
+                self.push_inst(Inst::Set(id));
+            }
+        }
+    }
+
+    pub fn lower_place(&mut self, e: ExprId<'a>) -> usize {
+        match e.data(self.db) {
+            ExprData::Binop(_, _, _)
+            | ExprData::Error
+            | ExprData::FnCall(_, _)
+            | ExprData::While(_, _)
+            | ExprData::Assign(_, _)
+            | ExprData::Number(_) => panic!(),
+            ExprData::Let(pat, e1, e2) => {
+                self.lower(e1);
+                self.lower_pat(pat);
+                self.lower_place(e2)
+            }
+            ExprData::If(cond, th, el) => {
+                todo!()
+            }
+            ExprData::Var(x) => self.get_var(x),
+        }
+    }
+
+    pub fn lower_pat(&mut self, pat: PatternId<'a>) {
+        match pat.data(self.db) {
+            PatternData::Wildcard => (),
+            PatternData::Var(name, _) => {
+                let id = self.new_var(name);
+                self.push_inst(Inst::Set(id));
             }
         }
     }

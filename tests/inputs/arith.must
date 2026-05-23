@@ -11,9 +11,9 @@ fn is_even(x: int) -> bool {
 }
 
 fn main() -> int {
-    let _ = while is_even(read()) {
-        print(40)
+    let mut i = 10 in
+    while 0 < i {
+        let _ = print(i) in
+        i = i - 1
     }
-    in
-    9
 }

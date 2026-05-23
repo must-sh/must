@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use salsa::{Accumulator, Database};
 
 use crate::{
-    ast::{ExprData, ExprId, Ident, Span},
+    ast::{ExprData, ExprId, Ident, PatternData, PatternId, Span},
     diagnostic::Diagnostic,
 };
 
@@ -35,7 +35,7 @@ pub struct FnSig {
 }
 
 pub struct Env<'a> {
-    type_map: HashMap<Ident<'a>, Type>,
+    var_map: HashMap<Ident<'a>, VarBinding>,
     function_defs: &'a HashMap<Ident<'a>, FnSig>,
     db: &'a dyn Database,
 }
@@ -60,53 +60,59 @@ impl Diagnostic {
     pub fn unbound_var(db: &dyn Database, span: Span, name: &str) -> Self {
         Diagnostic::error(db, span, format!("unbound var: {:?}", name))
     }
+
+    pub fn cannot_assign(db: &dyn Database, span: Span) -> Self {
+        Diagnostic::error(db, span, format!("this expression cannot be mutated",))
+    }
 }
 
 impl<'a> Env<'a> {
     pub fn new(db: &'a dyn Database, function_defs: &'a HashMap<Ident<'a>, FnSig>) -> Self {
-        let type_map = HashMap::new();
+        let var_map = HashMap::new();
         Self {
-            type_map,
+            var_map,
             function_defs,
             db,
         }
     }
 
-    pub fn infer_expr(&mut self, e: ExprId<'a>) -> Type {
+    pub fn infer_expr(&mut self, e: ExprId<'a>) -> (Type, bool) {
         match e.data(self.db) {
-            ExprData::Number(_) => Type::Int,
+            ExprData::Number(_) => (Type::Int, false),
             ExprData::Binop(op, expr, expr1) => {
                 use crate::common::Op::*;
-                match op {
+                let tp = match op {
                     Add | Sub | Mul | Div => {
-                        self.check_expr(expr, &Type::Int);
-                        self.check_expr(expr1, &Type::Int);
+                        self.check_expr(expr, &Type::Int, false);
+                        self.check_expr(expr1, &Type::Int, false);
                         Type::Int
                     }
-                    Eq => {
-                        self.check_expr(expr, &Type::Int);
-                        self.check_expr(expr1, &Type::Int);
+                    Eq | Lt => {
+                        self.check_expr(expr, &Type::Int, false);
+                        self.check_expr(expr1, &Type::Int, false);
                         Type::Bool
                     }
-                }
+                };
+                (tp, false)
             }
-            ExprData::Let(x, e1, e2) => {
-                let tp1 = self.infer_expr(e1);
-                self.type_map.insert(x, tp1);
+            ExprData::Let(pat, e1, e2) => {
+                let (tp1, _) = self.infer_expr(e1);
+                let bindings = self.check_pat(pat, tp1);
+                self.extend(bindings);
                 self.infer_expr(e2)
             }
             ExprData::Var(x) => match self.get_var(x) {
-                Some(tp) => tp.clone(),
+                Some(VarBinding { tp, is_mut }) => (tp.clone(), is_mut),
                 None => {
                     Diagnostic::unbound_var(self.db, e.span(self.db), x.text(self.db))
                         .accumulate(self.db);
-                    Type::Error
+                    (Type::Error, true)
                 }
             },
             ExprData::FnCall(fn_name, exprs) => {
                 let sig = match self.function_defs.get(&fn_name) {
                     Some(sig) => sig,
-                    None => return Type::Error,
+                    None => return (Type::Error, true),
                 };
                 let mut tp_args = sig.args.iter();
                 let mut id = 0;
@@ -120,45 +126,81 @@ impl<'a> Env<'a> {
                             continue;
                         }
                     };
-                    self.check_expr(e, exp_tp);
+                    self.check_expr(e, exp_tp, false);
                 }
                 if let Some(tp) = tp_args.next() {
                     Diagnostic::missing_argument(self.db, id, e.span(self.db), tp.clone())
                         .accumulate(self.db);
                 }
-                *sig.ret.clone()
+                (*sig.ret.clone(), false)
             }
-            ExprData::Error => Type::Error,
+            ExprData::Error => (Type::Error, true),
             ExprData::If(cond, th, el) => {
-                self.check_expr(cond, &Type::Bool);
-                let tp = self.infer_expr(th);
-                self.check_expr(el, &tp);
-                tp
+                self.check_expr(cond, &Type::Bool, false);
+                let (tp, is_mut) = self.infer_expr(th);
+                self.check_expr(el, &tp, is_mut);
+                (tp, is_mut)
             }
             ExprData::While(cond, body) => {
-                self.check_expr(cond, &Type::Bool);
+                self.check_expr(cond, &Type::Bool, false);
                 self.infer_expr(body);
-                Type::Int
+                (Type::Int, false)
+            }
+            ExprData::Assign(e1, e2) => {
+                let (tp, is_mut) = self.infer_expr(e1);
+                if !is_mut {
+                    Diagnostic::cannot_assign(self.db, e1.span(self.db)).accumulate(self.db);
+                }
+                self.check_expr(e2, &tp, false);
+                (Type::Bool, false)
             }
         }
     }
 
-    pub fn check_expr(&mut self, e: ExprId<'a>, tp: &Type) {
-        let tp_inferred = self.infer_expr(e);
-        if !(tp_inferred == *tp) {
+    pub fn extend(&mut self, bindings: Vec<(Ident<'a>, VarBinding)>) {
+        for (name, binding) in bindings {
+            self.add_var(name, binding);
+        }
+    }
+
+    // p -> q
+    // ~p ∨ q
+    pub fn check_expr(&mut self, e: ExprId<'a>, tp: &Type, exp_mut: bool) {
+        let (tp_inferred, mut_inferred) = self.infer_expr(e);
+        if !(tp_inferred == *tp && (!exp_mut || mut_inferred)) {
             Diagnostic::type_mismatch(self.db, e.span(self.db), tp.clone(), tp_inferred)
                 .accumulate(self.db);
         }
     }
 
-    pub(crate) fn add_var(&mut self, arg: Ident<'a>, tp: Type) {
-        self.type_map.insert(arg, tp);
+    pub(crate) fn add_var(&mut self, arg: Ident<'a>, binding: VarBinding) {
+        self.var_map.insert(arg, binding);
     }
 
-    pub fn get_var(&self, x: Ident<'a>) -> Option<Type> {
-        self.type_map
-            .get(&x)
-            .cloned()
-            .or_else(|| self.function_defs.get(&x).cloned().map(Type::Fn))
+    pub fn get_var(&self, x: Ident<'a>) -> Option<VarBinding> {
+        self.var_map.get(&x).cloned().or_else(|| {
+            self.function_defs
+                .get(&x)
+                .cloned()
+                .map(Type::Fn)
+                .map(|tp| VarBinding { tp, is_mut: false })
+        })
     }
+
+    // pub fn extend(&mut self, v: Vec<(I))
+
+    pub fn check_pat(&self, pat: PatternId<'a>, tp: Type) -> Vec<(Ident<'a>, VarBinding)> {
+        match pat.data(self.db) {
+            PatternData::Wildcard => vec![],
+            PatternData::Var(name, is_mut) => {
+                vec![(name, VarBinding { tp, is_mut })]
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct VarBinding {
+    tp: Type,
+    is_mut: bool,
 }

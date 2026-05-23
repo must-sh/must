@@ -6,4 +6,5 @@ pub enum Op {
     Div,
 
     Eq,
+    Lt,
 }
