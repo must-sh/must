@@ -50,7 +50,7 @@ fn main() {
 
     let mut vm = VM::new(&prog.funcs);
 
-    let res = vm.eval_func("main", 0).unwrap();
+    let res = vm.eval_func("main").unwrap();
 
     println!("Result: {:?}", res);
 }

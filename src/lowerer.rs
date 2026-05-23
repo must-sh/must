@@ -48,11 +48,10 @@ impl<'a> Builder<'a> {
                 self.push_inst(Inst::Get(id));
             }
             ExprData::FnCall(name, args) => {
-                let n = args.len();
                 for arg in args.into_iter().rev() {
                     self.lower(arg);
                 }
-                self.push_inst(Inst::Call(name.text(self.db).clone(), n));
+                self.push_inst(Inst::Call(name.text(self.db).clone()));
             }
             ExprData::Error => panic!("no errors allowed here"),
             ExprData::If(cond, th, el) => {

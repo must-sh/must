@@ -2,18 +2,7 @@ use std::collections::HashMap;
 
 use salsa::Database;
 
-use crate::{
-    ast::{self, Ident, Span},
-    bytecode,
-    diagnostic::Diagnostic,
-    input, lowerer, resolve, tp,
-};
-
-impl Diagnostic {
-    pub fn missing_body(db: &dyn Database, span: Span, name: &str) -> Diagnostic {
-        Diagnostic::error(db, span, format!("function {name} declared without a body"))
-    }
-}
+use crate::{ast, bytecode, input, lowerer, resolve, tp};
 
 #[salsa::tracked]
 pub fn type_check_file<'db>(db: &'db dyn Database, sf: input::Source) {

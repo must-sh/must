@@ -1,12 +1,12 @@
 use std::{collections::HashMap, io::stdin};
 
-use salsa::Id;
-
 use crate::bytecode::{Func, Inst, Terminator};
 
 pub struct VM<'a> {
     funcs: &'a HashMap<String, Func>,
-    stack: Vec<Value>,
+    operand_stack: Vec<Value>,
+    stack: [Value; 4096],
+    stack_pointer: usize,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -17,27 +17,33 @@ pub enum Value {
 
 impl<'a> VM<'a> {
     pub fn new(funcs: &'a HashMap<String, Func>) -> Self {
-        let stack = vec![];
-        Self { funcs, stack }
+        let operand_stack = vec![];
+        Self {
+            funcs,
+            operand_stack,
+            stack: [Value::Int(0); 4096],
+            stack_pointer: 0,
+        }
     }
 
-    pub fn eval_func(&mut self, name: &str, n: usize) -> Option<Value> {
+    pub fn eval_func(&mut self, name: &str) -> Option<Value> {
         let f = match self.funcs.get(name) {
             Some(f) => f,
             None => return self.call_intrinsic(name),
         };
 
-        let mut variables = vec![Value::Int(0); f.variables];
+        let bp = self.stack_pointer;
+        self.stack_pointer += f.variables;
 
         let mut current_block = 0;
         loop {
             for inst in &f.blocks[current_block].insts {
                 match inst {
-                    Inst::Push(n) => self.stack.push(Value::Int(*n)),
+                    Inst::Push(n) => self.operand_stack.push(Value::Int(*n)),
                     Inst::Binop(op) => {
                         use crate::common::Op::*;
                         use Value::*;
-                        let res = match (op, self.stack.pop()?, self.stack.pop()?) {
+                        let res = match (op, self.operand_stack.pop()?, self.operand_stack.pop()?) {
                             (Add, Int(y), Int(x)) => Int(x + y),
                             (Sub, Int(y), Int(x)) => Int(x - y),
                             (Mul, Int(y), Int(x)) => Int(x * y),
@@ -46,19 +52,19 @@ impl<'a> VM<'a> {
                             (Lt, Int(y), Int(x)) => Bool(x < y),
                             _ => panic!(),
                         };
-                        self.stack.push(res)
+                        self.operand_stack.push(res)
                     }
                     Inst::Set(n) => {
-                        let val = self.stack.pop()?;
-                        variables[*n] = val;
+                        let val = self.operand_stack.pop()?;
+                        self.stack[bp + *n] = val;
                     }
                     Inst::Get(n) => {
-                        let val = variables[*n];
-                        self.stack.push(val);
+                        let val = self.stack[bp + *n];
+                        self.operand_stack.push(val);
                     }
-                    Inst::Call(name, n) => {
-                        let ret = self.eval_func(name, *n)?;
-                        self.stack.push(ret)
+                    Inst::Call(name) => {
+                        let ret = self.eval_func(name)?;
+                        self.operand_stack.push(ret)
                     }
                 }
             }
@@ -66,11 +72,14 @@ impl<'a> VM<'a> {
             match &f.blocks[current_block].terminator {
                 Terminator::Jmp(id) => current_block = *id,
                 Terminator::Br(th, el) => {
-                    if let Value::Bool(cond) = self.stack.pop()? {
+                    if let Value::Bool(cond) = self.operand_stack.pop()? {
                         current_block = if cond { *th } else { *el };
                     }
                 }
-                Terminator::Ret => return self.stack.pop(),
+                Terminator::Ret => {
+                    self.stack_pointer = bp;
+                    return self.operand_stack.pop();
+                }
             }
         }
     }
@@ -87,7 +96,7 @@ impl<'a> VM<'a> {
                 Some(Value::Int(val))
             }
             "print" => {
-                let val = self.stack.pop()?;
+                let val = self.operand_stack.pop()?;
                 println!("{val:?}");
                 Some(Value::Int(0))
             }
