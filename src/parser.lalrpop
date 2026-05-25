@@ -69,6 +69,7 @@ Expr1 = SpannedExpr<Expr1Data>;
 Expr10 = SpannedExpr<Expr10Data>;
 Expr20 = SpannedExpr<Expr20Data>;
 Expr30 = SpannedExpr<Expr30Data>;
+Expr35 = SpannedExpr<Expr35Data>;
 Expr40 = SpannedExpr<Expr40Data>;
 
 Expr0Data: ExprData<'db> = {
@@ -96,8 +97,14 @@ Expr20Data: ExprData<'db> = {
 }
 
 Expr30Data: ExprData<'db> = {
-    <x: Expr30> "*" <y: Expr40> => ExprData::Binop(Op::Mul, x, y),
-    <x: Expr30> "/" <y: Expr40> => ExprData::Binop(Op::Div, x, y),
+    <x: Expr30> "*" <y: Expr35> => ExprData::Binop(Op::Mul, x, y),
+    <x: Expr30> "/" <y: Expr35> => ExprData::Binop(Op::Div, x, y),
+    Expr35Data
+}
+
+Expr35Data: ExprData<'db> = {
+    "*" <e: Expr35> => ExprData::Deref(e),
+    "&" <e: Expr35> => ExprData::AddressOf(e),
     Expr40Data
 }
 
@@ -144,4 +151,6 @@ TypeExpr = SpannedTypeExpr<TypeExprData>;
 TypeExprData: TypeExprData<'db> = {
     "int" => TypeExprData::Int,
     "bool" => TypeExprData::Bool,
+    "*" <tp: TypeExpr> => TypeExprData::Ptr(tp, false),
+    "*" "mut" <tp: TypeExpr> => TypeExprData::Ptr(tp, true),
 }

@@ -9,6 +9,10 @@ pub enum Inst {
 
     Set(usize),
     Get(usize),
+    LocalAddr(usize),
+
+    Load(usize),
+    Store(usize),
 
     Call(String),
 }

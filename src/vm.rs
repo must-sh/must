@@ -13,6 +13,7 @@ pub struct VM<'a> {
 pub enum Value {
     Int(i32),
     Bool(bool),
+    Ref(usize),
 }
 
 impl<'a> VM<'a> {
@@ -65,6 +66,22 @@ impl<'a> VM<'a> {
                     Inst::Call(name) => {
                         let ret = self.eval_func(name)?;
                         self.operand_stack.push(ret)
+                    }
+                    Inst::LocalAddr(n) => {
+                        let ptr = Value::Ref(bp + *n);
+                        self.operand_stack.push(ptr)
+                    }
+                    Inst::Load(offset) => {
+                        if let Value::Ref(ptr) = self.operand_stack.pop()? {
+                            let val = self.stack[ptr + offset];
+                            self.operand_stack.push(val);
+                        }
+                    }
+                    Inst::Store(offset) => {
+                        let val = self.operand_stack.pop()?;
+                        if let Value::Ref(ptr) = self.operand_stack.pop()? {
+                            self.stack[ptr + offset] = val;
+                        }
                     }
                 }
             }

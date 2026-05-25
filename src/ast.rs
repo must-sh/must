@@ -40,6 +40,9 @@ pub enum ExprData<'db> {
     While(ExprId<'db>, ExprId<'db>),
     Assign(ExprId<'db>, ExprId<'db>),
 
+    Deref(ExprId<'db>),
+    AddressOf(ExprId<'db>),
+
     Error,
 }
 
@@ -65,6 +68,7 @@ pub struct TypeExprId {
 pub enum TypeExprData<'db> {
     Int,
     Bool,
+    Ptr(TypeExprId<'db>, bool),
     Fn(Vec<TypeExprId<'db>>, TypeExprId<'db>),
 }
 

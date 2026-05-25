@@ -7,28 +7,58 @@ use crate::{
     diagnostic::Diagnostic,
 };
 
-#[derive(Debug, Eq, Clone, salsa::Update)]
+#[derive(Debug, PartialEq, Clone, salsa::Update)]
 pub enum Type {
     Error,
 
     Int,
     Bool,
     Fn(FnSig),
+    Ptr(Box<Type>, bool),
 }
 
-impl PartialEq for Type {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
+impl Type {
+    pub fn coerce_into(&self, into: &Type) -> bool {
+        match (self, into) {
             (_, Type::Error) | (Type::Error, _) => true,
             (Type::Int, Type::Int) => true,
             (Type::Bool, Type::Bool) => true,
-            (Self::Fn(l0), Self::Fn(r0)) => l0 == r0,
+            (Type::Ptr(tp1, is_mut1), Type::Ptr(tp2, is_mut2)) => {
+                // p -> q
+                // ~p ∨ q
+                (!is_mut2 || *is_mut1) && tp1.coerce_into(tp2) && (!is_mut2 || tp2.coerce_into(tp1))
+            }
+            (
+                Self::Fn(FnSig {
+                    args: args1,
+                    ret: ret1,
+                }),
+                Self::Fn(FnSig {
+                    args: args2,
+                    ret: ret2,
+                }),
+            ) => {
+                args1.len() == args2.len()
+                    && args1
+                        .iter()
+                        .zip(args2)
+                        .all(|(arg1, arg2)| arg2.coerce_into(arg1))
+                    && ret1.coerce_into(ret2)
+            }
             _ => false,
         }
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, salsa::Update)]
+// a: *mut String <: *mut Object
+// a = &mut "str"
+// *(a as *mut Object) = 4;
+
+// (a, c) -> b <: (p, s) -> q
+// iff
+// p <: a && b <: q
+
+#[derive(Debug, PartialEq, Clone, salsa::Update)]
 pub struct FnSig {
     pub args: Vec<Type>,
     pub ret: Box<Type>,
@@ -62,7 +92,11 @@ impl Diagnostic {
     }
 
     pub fn cannot_assign(db: &dyn Database, span: Span) -> Self {
-        Diagnostic::error(db, span, format!("this expression cannot be mutated",))
+        Diagnostic::error(db, span, format!("this expression cannot be mutated"))
+    }
+
+    pub fn cannot_dereference(db: &dyn Database, span: Span) -> Self {
+        Diagnostic::error(db, span, format!("this expression cannot be dereferenced"))
     }
 }
 
@@ -154,6 +188,17 @@ impl<'a> Env<'a> {
                 self.check_expr(e2, &tp, false);
                 (Type::Bool, false)
             }
+            ExprData::Deref(e) => match self.infer_expr(e).0 {
+                Type::Ptr(tp, is_mut) => (*tp, is_mut),
+                _ => {
+                    Diagnostic::cannot_dereference(self.db, e.span(self.db)).accumulate(self.db);
+                    (Type::Error, true)
+                }
+            },
+            ExprData::AddressOf(e) => {
+                let (tp, is_mut) = self.infer_expr(e);
+                (Type::Ptr(Box::new(tp), is_mut), false)
+            }
         }
     }
 
@@ -167,7 +212,7 @@ impl<'a> Env<'a> {
     // ~p ∨ q
     pub fn check_expr(&mut self, e: ExprId<'a>, tp: &Type, exp_mut: bool) {
         let (tp_inferred, mut_inferred) = self.infer_expr(e);
-        if !(tp_inferred == *tp && (!exp_mut || mut_inferred)) {
+        if !(tp_inferred.coerce_into(tp) && (!exp_mut || mut_inferred)) {
             Diagnostic::type_mismatch(self.db, e.span(self.db), tp.clone(), tp_inferred)
                 .accumulate(self.db);
         }
