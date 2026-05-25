@@ -3,7 +3,7 @@ use crate::diagnostic::Diagnostic;
 use salsa::Accumulator;
 use crate::common::Op;
 
-grammar<'db>(db: &'db dyn salsa::Database);
+grammar<'db>(db: &'db dyn salsa::Database, source: crate::input::Source);
 
 // ==== Macros =================================================================
 
@@ -14,6 +14,18 @@ CommaSep<T>: Vec<T> = {
             v.push(e);
             v
         }
+    }
+};
+
+TwoOrMore<T>: Vec<T> = {
+    <first:T> "," <second:T> <rest: ("," <T>)*> (",")? => {
+        let mut v = Vec::new();
+        v.push(first);
+        v.push(second);
+        for t in rest {
+            v.push(t);
+        }
+        v
     }
 };
 
@@ -28,24 +40,24 @@ FnArg: (PatternId<'db>, TypeExprId<'db>) = {
 }
 
 FnDef: FnDef<'db> = {
-    "fn" <l: @L> <name: Ident> <r: @R> "(" <args: CommaSep<FnArg>> ")" "->" <ret: TypeExpr> "{"
+    "fn" <l: @L> <name: Ident> <r: @R> "(" <args: CommaSep<FnArg>> ")" <ret: ("->" <TypeExpr>)?> "{"
         <body: Expr0>
     "}" => {
             let span = Span::new(db, l, r);
-            FnDef::new(db, false, name, span, args, ret, Some(body))
+            FnDef::new(db, false, name, span, args, ret, Some(body), source)
         },
 
-    "extern" "fn" <l: @L> <name: Ident> <r: @R> "(" <args: CommaSep<FnArg>> ")" "->" <ret: TypeExpr> "{"
+    "extern" "fn" <l: @L> <name: Ident> <r: @R> "(" <args: CommaSep<FnArg>> ")" <ret: ("->" <TypeExpr>)?> "{"
         <body: Expr0>
     "}" => {
             let span = Span::new(db, l, r);
-            FnDef::new(db, true, name, span, args, ret, Some(body))
+            FnDef::new(db, true, name, span, args, ret, Some(body), source)
         },
 
-    "extern" "fn" <l: @L> <name: Ident> <r: @R> "(" <args: CommaSep<FnArg>> ")" "->" <ret: TypeExpr> ";"
+    "extern" "fn" <l: @L> <name: Ident> <r: @R> "(" <args: CommaSep<FnArg>> ")" <ret: ("->" <TypeExpr>)?> ";"
         => {
             let span = Span::new(db, l, r);
-            FnDef::new(db, true, name, span, args, ret, None)
+            FnDef::new(db, true, name, span, args, ret, None, source)
         }
 }
 
@@ -109,7 +121,9 @@ Expr35Data: ExprData<'db> = {
 }
 
 Expr40Data: ExprData<'db> = {
+    "(" ")" => ExprData::Tuple(vec![]),
     "(" <e: Expr0Data> ")" => e,
+    "(" <exprs: TwoOrMore<Expr0>> ")" => ExprData::Tuple(exprs),
     <id: Ident> => ExprData::Var(id),
     <id: Ident> "(" <args: CommaSep<Expr0>> ")" => ExprData::FnCall(id, args),
     <n: Num> => ExprData::Number(n),
@@ -133,8 +147,10 @@ Pattern = SpannedPattern<PatternData>;
 
 PatternData: PatternData<'db> = {
     "_" => PatternData::Wildcard,
+    "(" ")" => PatternData::Tuple(vec![]),
     <id: Ident> => PatternData::Var(id, false),
     "mut" <id: Ident> => PatternData::Var(id, true),
+    "(" <pats: TwoOrMore<Pattern>> ")" => PatternData::Tuple(pats),
 };
 
 // ==== Type expressions =======================================================
@@ -153,4 +169,6 @@ TypeExprData: TypeExprData<'db> = {
     "bool" => TypeExprData::Bool,
     "*" <tp: TypeExpr> => TypeExprData::Ptr(tp, false),
     "*" "mut" <tp: TypeExpr> => TypeExprData::Ptr(tp, true),
+    "(" ")" => TypeExprData::Tuple(vec![]),
+    "(" <tps: TwoOrMore<TypeExpr>> ")" => TypeExprData::Tuple(tps),
 }

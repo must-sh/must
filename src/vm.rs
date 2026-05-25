@@ -27,7 +27,7 @@ impl<'a> VM<'a> {
         }
     }
 
-    pub fn eval_func(&mut self, name: &str) -> Option<Value> {
+    pub fn eval_func(&mut self, name: &str) -> Option<()> {
         let f = match self.funcs.get(name) {
             Some(f) => f,
             None => return self.call_intrinsic(name),
@@ -65,7 +65,7 @@ impl<'a> VM<'a> {
                     }
                     Inst::Call(name) => {
                         let ret = self.eval_func(name)?;
-                        self.operand_stack.push(ret)
+                        // self.operand_stack.push(ret)
                     }
                     Inst::LocalAddr(n) => {
                         let ptr = Value::Ref(bp + *n);
@@ -83,6 +83,9 @@ impl<'a> VM<'a> {
                             self.stack[ptr + offset] = val;
                         }
                     }
+                    Inst::Drop => {
+                        self.operand_stack.pop()?;
+                    }
                 }
             }
 
@@ -95,13 +98,14 @@ impl<'a> VM<'a> {
                 }
                 Terminator::Ret => {
                     self.stack_pointer = bp;
-                    return self.operand_stack.pop();
+                    // return self.operand_stack.pop();
+                    return Some(());
                 }
             }
         }
     }
 
-    fn call_intrinsic(&mut self, name: &str) -> Option<Value> {
+    fn call_intrinsic(&mut self, name: &str) -> Option<()> {
         match name {
             "read" => {
                 let mut buf = String::new();
@@ -110,14 +114,19 @@ impl<'a> VM<'a> {
                     .trim()
                     .parse::<i32>()
                     .expect("this is not a valid integer");
-                Some(Value::Int(val))
+                self.operand_stack.push(Value::Int(val));
+                Some(())
             }
             "print" => {
                 let val = self.operand_stack.pop()?;
                 println!("{val:?}");
-                Some(Value::Int(0))
+                Some(())
             }
             _ => panic!("unknown intrinsic: {name}"),
         }
+    }
+
+    pub fn finish(mut self) -> Option<Value> {
+        self.operand_stack.pop()
     }
 }

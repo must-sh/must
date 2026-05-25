@@ -5,6 +5,7 @@ use salsa::Database;
 use crate::{
     ast::{ExprData, ExprId, Ident, PatternData, PatternId},
     bytecode::{Block, Func, Inst, Terminator},
+    tp::Type,
 };
 
 pub struct Builder<'a> {
@@ -12,16 +13,18 @@ pub struct Builder<'a> {
     current_block: usize,
     variable_map: HashMap<Ident<'a>, usize>,
     counter: usize,
+    type_map: &'a HashMap<ExprId<'a>, Type>,
     db: &'a dyn Database,
 }
 
 impl<'a> Builder<'a> {
-    pub fn new(db: &'a dyn Database) -> Self {
+    pub fn new(db: &'a dyn Database, type_map: &'a HashMap<ExprId<'a>, Type>) -> Self {
         Self {
             variable_map: HashMap::new(),
             counter: 0,
             blocks: vec![Block::empty()],
             current_block: 0,
+            type_map,
             db,
         }
     }
@@ -40,12 +43,17 @@ impl<'a> Builder<'a> {
             }
             ExprData::Let(pat, e1, e2) => {
                 self.lower(e1);
-                self.lower_pat(pat);
+                let tp = self.type_map.get(&e1).unwrap();
+                self.lower_pat(pat, tp);
                 self.lower(e2);
             }
             ExprData::Var(x) => {
+                let tp = self.type_map.get(&e).unwrap();
+                let size = tp.get_size();
                 let id = self.get_var(x);
-                self.push_inst(Inst::Get(id));
+                for i in id..id + size {
+                    self.push_inst(Inst::Get(i));
+                }
             }
             ExprData::FnCall(name, args) => {
                 for arg in args.into_iter().rev() {
@@ -108,6 +116,11 @@ impl<'a> Builder<'a> {
                     panic!()
                 }
             }
+            ExprData::Tuple(exprs) => {
+                for e in exprs {
+                    self.lower(e);
+                }
+            }
         }
     }
 
@@ -118,10 +131,12 @@ impl<'a> Builder<'a> {
             | ExprData::FnCall(_, _)
             | ExprData::While(_, _)
             | ExprData::Assign(_, _)
+            | ExprData::Tuple(_)
             | ExprData::Number(_) => panic!(),
             ExprData::Let(pat, e1, e2) => {
                 self.lower(e1);
-                self.lower_pat(pat);
+                let tp = self.type_map.get(&e1).unwrap();
+                self.lower_pat(pat, tp);
                 self.lower_place(e2)
             }
             ExprData::If(cond, th, el) => {
@@ -136,12 +151,29 @@ impl<'a> Builder<'a> {
         }
     }
 
-    pub fn lower_pat(&mut self, pat: PatternId<'a>) {
+    pub fn lower_pat(&mut self, pat: PatternId<'a>, tp: &Type) {
         match pat.data(self.db) {
-            PatternData::Wildcard => (),
+            PatternData::Wildcard => {
+                let size = tp.get_size();
+                for _ in 0..size {
+                    self.push_inst(Inst::Drop);
+                }
+            }
             PatternData::Var(name, _) => {
-                let id = self.new_var(name);
-                self.push_inst(Inst::Set(id));
+                let size = tp.get_size();
+                let id = self.new_var(name, size);
+                for i in id..id + size {
+                    self.push_inst(Inst::Set(i));
+                }
+            }
+            PatternData::Tuple(pats) => {
+                if let Type::Tuple(tps) = tp {
+                    for (pat, tp) in pats.into_iter().zip(tps.into_iter()) {
+                        self.lower_pat(pat, tp);
+                    }
+                } else {
+                    panic!()
+                }
             }
         }
     }
@@ -163,10 +195,10 @@ impl<'a> Builder<'a> {
         }
     }
 
-    pub fn new_var(&mut self, x: Ident<'a>) -> usize {
+    pub fn new_var(&mut self, x: Ident<'a>, size: usize) -> usize {
         let id = self.counter;
         self.variable_map.insert(x, id);
-        self.counter += 1;
+        self.counter += size;
         id
     }
 

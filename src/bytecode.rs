@@ -14,6 +14,8 @@ pub enum Inst {
     Load(usize),
     Store(usize),
 
+    Drop,
+
     Call(String),
 }
 
