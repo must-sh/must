@@ -15,6 +15,7 @@ pub enum Type {
     Bool,
     Fn(FnSig),
     Ptr(Box<Type>, bool),
+    Tuple(Vec<Type>),
 }
 
 impl Type {
@@ -23,6 +24,13 @@ impl Type {
             (_, Type::Error) | (Type::Error, _) => true,
             (Type::Int, Type::Int) => true,
             (Type::Bool, Type::Bool) => true,
+            (Type::Tuple(tps1), Type::Tuple(tps2)) => {
+                tps1.len() == tps2.len()
+                    && tps1
+                        .iter()
+                        .zip(tps2.iter())
+                        .all(|(tp1, tp2)| tp1.coerce_into(tp2))
+            }
             (Type::Ptr(tp1, is_mut1), Type::Ptr(tp2, is_mut2)) => {
                 // p -> q
                 // ~p ∨ q
@@ -48,6 +56,14 @@ impl Type {
             _ => false,
         }
     }
+
+    pub fn get_size(&self) -> usize {
+        match self {
+            Type::Error => panic!(),
+            Type::Int | Type::Bool | Type::Fn(_) | Type::Ptr(_, _) => 1,
+            Type::Tuple(tps) => tps.iter().map(|tp| tp.get_size()).sum(),
+        }
+    }
 }
 
 // a: *mut String <: *mut Object
@@ -64,14 +80,20 @@ pub struct FnSig {
     pub ret: Box<Type>,
 }
 
+#[derive(Debug, PartialEq, Clone, salsa::Update)]
+pub struct InferenceResult<'db> {
+    pub type_map: HashMap<ExprId<'db>, Type>,
+}
+
 pub struct Env<'a> {
     var_map: HashMap<Ident<'a>, VarBinding>,
-    function_defs: &'a HashMap<Ident<'a>, FnSig>,
+    function_defs: HashMap<Ident<'a>, FnSig>,
+    type_map: HashMap<ExprId<'a>, Type>,
     db: &'a dyn Database,
 }
 
 impl Diagnostic {
-    pub fn type_mismatch(db: &dyn Database, span: Span, exp: Type, got: Type) -> Diagnostic {
+    pub fn type_mismatch(db: &dyn Database, span: Span, exp: &Type, got: &Type) -> Diagnostic {
         Diagnostic::error(
             db,
             span,
@@ -79,7 +101,7 @@ impl Diagnostic {
         )
     }
 
-    pub fn missing_argument(db: &dyn Database, id: usize, span: Span, tp: Type) -> Self {
+    pub fn missing_argument(db: &dyn Database, id: usize, span: Span, tp: &Type) -> Self {
         Diagnostic::error(db, span, format!("missing arg #{} of type {:?}", id, tp))
     }
 
@@ -98,20 +120,29 @@ impl Diagnostic {
     pub fn cannot_dereference(db: &dyn Database, span: Span) -> Self {
         Diagnostic::error(db, span, format!("this expression cannot be dereferenced"))
     }
+
+    pub fn unexpected_tuple(db: &dyn Database, span: Span, n: usize, tp: &Type) -> Self {
+        Diagnostic::error(
+            db,
+            span,
+            format!("expected {:?}, but this matches {}-element tuple", tp, n),
+        )
+    }
 }
 
 impl<'a> Env<'a> {
-    pub fn new(db: &'a dyn Database, function_defs: &'a HashMap<Ident<'a>, FnSig>) -> Self {
+    pub fn new(db: &'a dyn Database, function_defs: HashMap<Ident<'a>, FnSig>) -> Self {
         let var_map = HashMap::new();
         Self {
             var_map,
             function_defs,
+            type_map: HashMap::new(),
             db,
         }
     }
 
     pub fn infer_expr(&mut self, e: ExprId<'a>) -> (Type, bool) {
-        match e.data(self.db) {
+        let (tp, is_mut) = match e.data(self.db) {
             ExprData::Number(_) => (Type::Int, false),
             ExprData::Binop(op, expr, expr1) => {
                 use crate::common::Op::*;
@@ -131,7 +162,7 @@ impl<'a> Env<'a> {
             }
             ExprData::Let(pat, e1, e2) => {
                 let (tp1, _) = self.infer_expr(e1);
-                let bindings = self.check_pat(pat, tp1);
+                let bindings = self.check_pat(pat, &tp1);
                 self.extend(bindings);
                 self.infer_expr(e2)
             }
@@ -145,7 +176,7 @@ impl<'a> Env<'a> {
             },
             ExprData::FnCall(fn_name, exprs) => {
                 let sig = match self.function_defs.get(&fn_name) {
-                    Some(sig) => sig,
+                    Some(sig) => sig.clone(),
                     None => return (Type::Error, true),
                 };
                 let mut tp_args = sig.args.iter();
@@ -163,7 +194,7 @@ impl<'a> Env<'a> {
                     self.check_expr(e, exp_tp, false);
                 }
                 if let Some(tp) = tp_args.next() {
-                    Diagnostic::missing_argument(self.db, id, e.span(self.db), tp.clone())
+                    Diagnostic::missing_argument(self.db, id, e.span(self.db), tp)
                         .accumulate(self.db);
                 }
                 (*sig.ret.clone(), false)
@@ -199,7 +230,13 @@ impl<'a> Env<'a> {
                 let (tp, is_mut) = self.infer_expr(e);
                 (Type::Ptr(Box::new(tp), is_mut), false)
             }
-        }
+            ExprData::Tuple(exprs) => {
+                let tps = exprs.into_iter().map(|e| self.infer_expr(e).0).collect();
+                (Type::Tuple(tps), false)
+            }
+        };
+        self.type_map.insert(e, tp.clone());
+        (tp, is_mut)
     }
 
     pub fn extend(&mut self, bindings: Vec<(Ident<'a>, VarBinding)>) {
@@ -213,7 +250,7 @@ impl<'a> Env<'a> {
     pub fn check_expr(&mut self, e: ExprId<'a>, tp: &Type, exp_mut: bool) {
         let (tp_inferred, mut_inferred) = self.infer_expr(e);
         if !(tp_inferred.coerce_into(tp) && (!exp_mut || mut_inferred)) {
-            Diagnostic::type_mismatch(self.db, e.span(self.db), tp.clone(), tp_inferred)
+            Diagnostic::type_mismatch(self.db, e.span(self.db), tp, &tp_inferred)
                 .accumulate(self.db);
         }
     }
@@ -232,14 +269,38 @@ impl<'a> Env<'a> {
         })
     }
 
-    // pub fn extend(&mut self, v: Vec<(I))
-
-    pub fn check_pat(&self, pat: PatternId<'a>, tp: Type) -> Vec<(Ident<'a>, VarBinding)> {
+    pub fn check_pat(&self, pat: PatternId<'a>, tp: &Type) -> Vec<(Ident<'a>, VarBinding)> {
         match pat.data(self.db) {
             PatternData::Wildcard => vec![],
             PatternData::Var(name, is_mut) => {
-                vec![(name, VarBinding { tp, is_mut })]
+                vec![(
+                    name,
+                    VarBinding {
+                        tp: tp.clone(),
+                        is_mut,
+                    },
+                )]
             }
+            PatternData::Tuple(pats) => {
+                if let Type::Tuple(tps) = tp
+                    && tps.len() == pats.len()
+                {
+                    pats.into_iter()
+                        .zip(tps.into_iter())
+                        .flat_map(|(pat, tp)| self.check_pat(pat, tp))
+                        .collect()
+                } else {
+                    Diagnostic::unexpected_tuple(self.db, pat.span(self.db), pats.len(), tp)
+                        .accumulate(self.db);
+                    vec![]
+                }
+            }
+        }
+    }
+
+    pub fn finish(self) -> InferenceResult<'a> {
+        InferenceResult {
+            type_map: self.type_map,
         }
     }
 }

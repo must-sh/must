@@ -48,9 +48,12 @@ fn main() {
 
     let prog = driver::compile(db, functions);
 
+    println!("{prog:#?}");
+
     let mut vm = VM::new(&prog.funcs);
 
-    let res = vm.eval_func("main").unwrap();
-
-    println!("Result: {:?}", res);
+    match vm.eval_func("main") {
+        Some(_) => println!("Result: {:?}", vm.finish()),
+        None => println!("runtime error occured!"),
+    }
 }

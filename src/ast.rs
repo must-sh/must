@@ -1,4 +1,4 @@
-use crate::common::Op;
+use crate::{common::Op, input::Source};
 
 #[salsa::tracked(debug)]
 pub struct Span<'db> {
@@ -19,8 +19,9 @@ pub struct FnDef<'db> {
     pub name: Ident<'db>,
     pub span: Span<'db>,
     pub args: Vec<(PatternId<'db>, TypeExprId<'db>)>,
-    pub ret: TypeExprId<'db>,
+    pub ret: Option<TypeExprId<'db>>,
     pub body: Option<ExprId<'db>>,
+    pub sf: Source,
 }
 
 #[salsa::interned(debug)]
@@ -43,6 +44,8 @@ pub enum ExprData<'db> {
     Deref(ExprId<'db>),
     AddressOf(ExprId<'db>),
 
+    Tuple(Vec<ExprId<'db>>),
+
     Error,
 }
 
@@ -56,6 +59,7 @@ pub struct PatternId {
 pub enum PatternData<'db> {
     Wildcard,
     Var(Ident<'db>, bool),
+    Tuple(Vec<PatternId<'db>>),
 }
 
 #[salsa::interned(debug)]
@@ -70,6 +74,7 @@ pub enum TypeExprData<'db> {
     Bool,
     Ptr(TypeExprId<'db>, bool),
     Fn(Vec<TypeExprId<'db>>, TypeExprId<'db>),
+    Tuple(Vec<TypeExprId<'db>>),
 }
 
 #[salsa::interned(debug)]
