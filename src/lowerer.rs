@@ -92,12 +92,26 @@ impl<'a> Builder<'a> {
             ExprData::Assign(e1, e2) => {
                 let id = self.lower_place(e1);
                 self.lower(e2);
-                self.push_inst(Inst::Set(id));
+                match id {
+                    Some(id) => self.push_inst(Inst::Set(id)),
+                    None => self.push_inst(Inst::Store(0)),
+                }
+            }
+            ExprData::Deref(e) => {
+                self.lower(e);
+                self.push_inst(Inst::Load(0));
+            }
+            ExprData::AddressOf(e) => {
+                if let Some(id) = self.lower_place(e) {
+                    self.push_inst(Inst::LocalAddr(id));
+                } else {
+                    panic!()
+                }
             }
         }
     }
 
-    pub fn lower_place(&mut self, e: ExprId<'a>) -> usize {
+    pub fn lower_place(&mut self, e: ExprId<'a>) -> Option<usize> {
         match e.data(self.db) {
             ExprData::Binop(_, _, _)
             | ExprData::Error
@@ -113,7 +127,12 @@ impl<'a> Builder<'a> {
             ExprData::If(cond, th, el) => {
                 todo!()
             }
-            ExprData::Var(x) => self.get_var(x),
+            ExprData::Var(x) => Some(self.get_var(x)),
+            ExprData::Deref(e) => {
+                self.lower(e);
+                None
+            }
+            ExprData::AddressOf(expr_id) => todo!(),
         }
     }
 

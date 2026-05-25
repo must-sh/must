@@ -20,10 +20,14 @@ pub(crate) fn parse_type_expr<'db>(db: &'db dyn Database, tp: TypeExprId<'db>) -
             let fn_sig = FnSig { args, ret };
             Type::Fn(fn_sig)
         }
+        ast::TypeExprData::Ptr(tp, is_mut) => {
+            let tp = Box::new(parse_type_expr(db, tp));
+            Type::Ptr(tp, is_mut)
+        }
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, salsa::Update)]
+#[derive(Debug, PartialEq, Clone, salsa::Update)]
 pub struct ModuleDefs<'db> {
     pub(crate) defs: HashMap<Ident<'db>, FnSig>,
 }

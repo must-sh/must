@@ -1,0 +1,16 @@
+
+fn bad() -> *int {
+    let x = 42 in
+    &x
+}
+
+fn foo() -> int {
+    let x = 0 == 0 in
+    0
+}
+
+fn main() -> bool {
+    let ptr = bad() in
+    let _ = foo() in
+    *ptr == 13
+}
