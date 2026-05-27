@@ -5,7 +5,7 @@ fn main() {
     let triple = (1, 2, 3) in
     let (x, _, y) = triple in
     let res = y + x in
-    let _ = foo() in
+    foo();
     print(res)
 }
 

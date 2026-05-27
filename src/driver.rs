@@ -10,7 +10,7 @@ use crate::{
 };
 
 #[salsa::tracked]
-pub fn type_check_file<'db>(db: &'db dyn Database, sf: input::Source) {
+pub fn type_check_file(db: &dyn Database, sf: input::Source) {
     let functions = input::parse_file(db, sf);
 
     for func in functions.defs(db) {
@@ -54,8 +54,8 @@ pub fn compile<'db>(db: &'db dyn Database, functions: ast::File<'db>) -> bytecod
         }
     }
 
-    let prog = bytecode::Prog {
+    
+    bytecode::Prog {
         funcs: compiled_functions,
-    };
-    prog
+    }
 }

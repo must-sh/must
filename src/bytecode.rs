@@ -4,7 +4,8 @@ use crate::common::Op;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Inst {
-    Push(i32),
+    PushInt(i32),
+    PushBool(bool),
     Binop(Op),
 
     Set(usize),
@@ -51,13 +52,3 @@ pub struct Func {
 pub struct Prog {
     pub funcs: HashMap<String, Func>,
 }
-
-// Block0:
-//  push 42
-//  push 13
-//  add
-//  jmp Block1
-// Block1:
-//  ...
-//  eq
-//  br Block2 Block3

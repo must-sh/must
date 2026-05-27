@@ -1,5 +1,5 @@
 
-extern fn print(x: int) -> int;
+extern fn print(x: int);
 extern fn read() -> int;
 
 fn square(x: int) -> int {
@@ -10,10 +10,10 @@ fn is_even(x: int) -> bool {
     (x / 2) * 2 == x
 }
 
-fn main() -> int {
+fn main() {
     let mut i = 10 in
     while 0 < i {
-        let _ = print(i) in
+        print(i);
         i = i - 1
     }
 }

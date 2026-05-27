@@ -33,11 +33,12 @@ pub struct ExprId {
 #[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::Update)]
 pub enum ExprData<'db> {
     Number(i32),
+    Bool(bool),
     Binop(Op, ExprId<'db>, ExprId<'db>),
     Let(PatternId<'db>, ExprId<'db>, ExprId<'db>),
     Var(Ident<'db>),
     FnCall(Ident<'db>, Vec<ExprId<'db>>),
-    If(ExprId<'db>, ExprId<'db>, ExprId<'db>),
+    If(ExprId<'db>, ExprId<'db>, Option<ExprId<'db>>),
     While(ExprId<'db>, ExprId<'db>),
     Assign(ExprId<'db>, ExprId<'db>),
 
@@ -45,6 +46,7 @@ pub enum ExprData<'db> {
     AddressOf(ExprId<'db>),
 
     Tuple(Vec<ExprId<'db>>),
+    Seq(ExprId<'db>, ExprId<'db>),
 
     Error,
 }
