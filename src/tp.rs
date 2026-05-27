@@ -32,8 +32,6 @@ impl Type {
                         .all(|(tp1, tp2)| tp1.coerce_into(tp2))
             }
             (Type::Ptr(tp1, is_mut1), Type::Ptr(tp2, is_mut2)) => {
-                // p -> q
-                // ~p ∨ q
                 (!is_mut2 || *is_mut1) && tp1.coerce_into(tp2) && (!is_mut2 || tp2.coerce_into(tp1))
             }
             (
@@ -66,14 +64,6 @@ impl Type {
     }
 }
 
-// a: *mut String <: *mut Object
-// a = &mut "str"
-// *(a as *mut Object) = 4;
-
-// (a, c) -> b <: (p, s) -> q
-// iff
-// p <: a && b <: q
-
 #[derive(Debug, PartialEq, Clone, salsa::Update)]
 pub struct FnSig {
     pub args: Vec<Type>,
@@ -86,7 +76,7 @@ pub struct InferenceResult<'db> {
 }
 
 pub struct Env<'a> {
-    var_map: HashMap<Ident<'a>, VarBinding>,
+    scopes: Vec<HashMap<Ident<'a>, VarBinding>>,
     function_defs: HashMap<Ident<'a>, FnSig>,
     type_map: HashMap<ExprId<'a>, Type>,
     db: &'a dyn Database,
@@ -114,11 +104,11 @@ impl Diagnostic {
     }
 
     pub fn cannot_assign(db: &dyn Database, span: Span) -> Self {
-        Diagnostic::error(db, span, format!("this expression cannot be mutated"))
+        Diagnostic::error(db, span, "this expression cannot be mutated".to_string())
     }
 
     pub fn cannot_dereference(db: &dyn Database, span: Span) -> Self {
-        Diagnostic::error(db, span, format!("this expression cannot be dereferenced"))
+        Diagnostic::error(db, span, "this expression cannot be dereferenced".to_string())
     }
 
     pub fn unexpected_tuple(db: &dyn Database, span: Span, n: usize, tp: &Type) -> Self {
@@ -128,17 +118,31 @@ impl Diagnostic {
             format!("expected {:?}, but this matches {}-element tuple", tp, n),
         )
     }
+
+    pub fn missing_else_branch(db: &dyn Database, span: Span, tp: &Type) -> Self {
+        Diagnostic::error(db, span, format!("missing else branch of type {:?}", tp))
+    }
 }
 
 impl<'a> Env<'a> {
     pub fn new(db: &'a dyn Database, function_defs: HashMap<Ident<'a>, FnSig>) -> Self {
-        let var_map = HashMap::new();
+        let scopes = vec![HashMap::new()];
         Self {
-            var_map,
+            scopes,
             function_defs,
             type_map: HashMap::new(),
             db,
         }
+    }
+
+    pub fn with_scope<F, R>(&mut self, f: F) -> R
+    where
+        F: FnOnce(&mut Self) -> R,
+    {
+        self.scopes.push(HashMap::new());
+        let r = f(self);
+        self.scopes.pop();
+        r
     }
 
     pub fn infer_expr(&mut self, e: ExprId<'a>) -> (Type, bool) {
@@ -162,9 +166,11 @@ impl<'a> Env<'a> {
             }
             ExprData::Let(pat, e1, e2) => {
                 let (tp1, _) = self.infer_expr(e1);
-                let bindings = self.check_pat(pat, &tp1);
-                self.extend(bindings);
-                self.infer_expr(e2)
+                self.with_scope(|env| {
+                    let bindings = env.check_pat(pat, &tp1);
+                    env.extend(bindings);
+                    env.infer_expr(e2)
+                })
             }
             ExprData::Var(x) => match self.get_var(x) {
                 Some(VarBinding { tp, is_mut }) => (tp.clone(), is_mut),
@@ -202,14 +208,21 @@ impl<'a> Env<'a> {
             ExprData::Error => (Type::Error, true),
             ExprData::If(cond, th, el) => {
                 self.check_expr(cond, &Type::Bool, false);
-                let (tp, is_mut) = self.infer_expr(th);
-                self.check_expr(el, &tp, is_mut);
-                (tp, is_mut)
+                let (tp, _) = self.infer_expr(th);
+                if let Some(el) = el {
+                    self.check_expr(el, &tp, false);
+                } else {
+                    if !tp.coerce_into(&Type::Tuple(vec![])) {
+                        Diagnostic::missing_else_branch(self.db, e.span(self.db), &tp)
+                            .accumulate(self.db)
+                    }
+                }
+                (tp, false)
             }
             ExprData::While(cond, body) => {
                 self.check_expr(cond, &Type::Bool, false);
                 self.infer_expr(body);
-                (Type::Int, false)
+                (Type::Tuple(vec![]), false)
             }
             ExprData::Assign(e1, e2) => {
                 let (tp, is_mut) = self.infer_expr(e1);
@@ -217,7 +230,7 @@ impl<'a> Env<'a> {
                     Diagnostic::cannot_assign(self.db, e1.span(self.db)).accumulate(self.db);
                 }
                 self.check_expr(e2, &tp, false);
-                (Type::Bool, false)
+                (Type::Tuple(vec![]), false)
             }
             ExprData::Deref(e) => match self.infer_expr(e).0 {
                 Type::Ptr(tp, is_mut) => (*tp, is_mut),
@@ -234,6 +247,11 @@ impl<'a> Env<'a> {
                 let tps = exprs.into_iter().map(|e| self.infer_expr(e).0).collect();
                 (Type::Tuple(tps), false)
             }
+            ExprData::Bool(_) => (Type::Bool, false),
+            ExprData::Seq(e1, e2) => {
+                self.infer_expr(e1);
+                self.infer_expr(e2)
+            }
         };
         self.type_map.insert(e, tp.clone());
         (tp, is_mut)
@@ -245,8 +263,6 @@ impl<'a> Env<'a> {
         }
     }
 
-    // p -> q
-    // ~p ∨ q
     pub fn check_expr(&mut self, e: ExprId<'a>, tp: &Type, exp_mut: bool) {
         let (tp_inferred, mut_inferred) = self.infer_expr(e);
         if !(tp_inferred.coerce_into(tp) && (!exp_mut || mut_inferred)) {
@@ -256,17 +272,22 @@ impl<'a> Env<'a> {
     }
 
     pub(crate) fn add_var(&mut self, arg: Ident<'a>, binding: VarBinding) {
-        self.var_map.insert(arg, binding);
+        self.scopes.last_mut().unwrap().insert(arg, binding);
     }
 
     pub fn get_var(&self, x: Ident<'a>) -> Option<VarBinding> {
-        self.var_map.get(&x).cloned().or_else(|| {
-            self.function_defs
-                .get(&x)
-                .cloned()
-                .map(Type::Fn)
-                .map(|tp| VarBinding { tp, is_mut: false })
-        })
+        self.scopes
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(&x))
+            .cloned()
+            .or_else(|| {
+                self.function_defs
+                    .get(&x)
+                    .cloned()
+                    .map(Type::Fn)
+                    .map(|tp| VarBinding { tp, is_mut: false })
+            })
     }
 
     pub fn check_pat(&self, pat: PatternId<'a>, tp: &Type) -> Vec<(Ident<'a>, VarBinding)> {
@@ -286,7 +307,7 @@ impl<'a> Env<'a> {
                     && tps.len() == pats.len()
                 {
                     pats.into_iter()
-                        .zip(tps.into_iter())
+                        .zip(tps)
                         .flat_map(|(pat, tp)| self.check_pat(pat, tp))
                         .collect()
                 } else {

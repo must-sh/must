@@ -40,7 +40,7 @@ impl<'a> VM<'a> {
         loop {
             for inst in &f.blocks[current_block].insts {
                 match inst {
-                    Inst::Push(n) => self.operand_stack.push(Value::Int(*n)),
+                    Inst::PushInt(n) => self.operand_stack.push(Value::Int(*n)),
                     Inst::Binop(op) => {
                         use crate::common::Op::*;
                         use Value::*;
@@ -63,10 +63,7 @@ impl<'a> VM<'a> {
                         let val = self.stack[bp + *n];
                         self.operand_stack.push(val);
                     }
-                    Inst::Call(name) => {
-                        let ret = self.eval_func(name)?;
-                        // self.operand_stack.push(ret)
-                    }
+                    Inst::Call(name) => self.eval_func(name)?,
                     Inst::LocalAddr(n) => {
                         let ptr = Value::Ref(bp + *n);
                         self.operand_stack.push(ptr)
@@ -86,6 +83,7 @@ impl<'a> VM<'a> {
                     Inst::Drop => {
                         self.operand_stack.pop()?;
                     }
+                    Inst::PushBool(b) => self.operand_stack.push(Value::Bool(*b)),
                 }
             }
 
@@ -98,7 +96,6 @@ impl<'a> VM<'a> {
                 }
                 Terminator::Ret => {
                     self.stack_pointer = bp;
-                    // return self.operand_stack.pop();
                     return Some(());
                 }
             }

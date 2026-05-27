@@ -4,13 +4,13 @@ fn bad() -> *int {
     &x
 }
 
-fn foo() -> int {
-    let x = 0 == 0 in
-    0
+fn foo() {
+    let x = true in
+    ()
 }
 
 fn main() -> bool {
     let ptr = bad() in
-    let _ = foo() in
+    foo();
     *ptr == 13
 }

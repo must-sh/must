@@ -78,6 +78,8 @@ SpannedExpr<Data>: ExprId<'db> = {
 
 Expr0 = SpannedExpr<Expr0Data>;
 Expr1 = SpannedExpr<Expr1Data>;
+Expr5 = SpannedExpr<Expr5Data>;
+Expr3 = SpannedExpr<Expr3Data>;
 Expr10 = SpannedExpr<Expr10Data>;
 Expr20 = SpannedExpr<Expr20Data>;
 Expr30 = SpannedExpr<Expr30Data>;
@@ -86,13 +88,22 @@ Expr40 = SpannedExpr<Expr40Data>;
 
 Expr0Data: ExprData<'db> = {
     "let" <pat: Pattern> "=" <e1: Expr0> "in" <e2: Expr0> => ExprData::Let(pat, e1, e2),
-    "if" <cond: Expr0> "{" <th: Expr0> "}" "else" "{" <el: Expr0> "}" => ExprData::If(cond, th, el),
-    "while" <cond: Expr0> "{" <body: Expr0> "}" => ExprData::While(cond, body),
     Expr1Data,
 }
 
 Expr1Data: ExprData<'db> = {
-    <e1: Expr10> "=" <e2: Expr1> => ExprData::Assign(e1, e2),
+    <e1: Expr3> ";" <e2: Expr1> => ExprData::Seq(e1, e2),
+    Expr3Data,
+}
+
+Expr3Data: ExprData<'db> = {
+    "if" <cond: Expr0> "{" <th: Expr0> "}" <el: ("else" "{" <Expr0> "}")?> => ExprData::If(cond, th, el),
+    "while" <cond: Expr0> "{" <body: Expr0> "}" => ExprData::While(cond, body),
+    Expr5Data,
+}
+
+Expr5Data: ExprData<'db> = {
+    <e1: Expr10> "=" <e2: Expr5> => ExprData::Assign(e1, e2),
     Expr10Data,
 }
 
@@ -127,6 +138,8 @@ Expr40Data: ExprData<'db> = {
     <id: Ident> => ExprData::Var(id),
     <id: Ident> "(" <args: CommaSep<Expr0>> ")" => ExprData::FnCall(id, args),
     <n: Num> => ExprData::Number(n),
+    "true" => ExprData::Bool(true),
+    "false" => ExprData::Bool(false),
 
     ! => {
         Diagnostic::parser_error(<>.error).accumulate(db);

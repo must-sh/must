@@ -1,0 +1,6 @@
+
+fn main() {
+    let mut x = let z = 52 in 4 in
+    let mut y = z in
+    y
+}

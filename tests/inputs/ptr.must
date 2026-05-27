@@ -1,14 +1,13 @@
 
-fn swap(x: *mut int, y: *mut int) -> int {
+fn swap(x: *mut int, y: *mut int) {
     let tmp = *x in
-    let _ = *x = *y in
-    let _ = *y = tmp in
-    0
+    *x = *y;
+    *y = tmp
 }
 
 fn main() -> int {
     let mut x = 42 in
     let mut y = 13 in
-    let _ = swap(&x, &y) in
+    swap(&x, &y);
     x
 }

@@ -35,7 +35,7 @@ impl<'a> Builder<'a> {
 
     pub fn lower(&mut self, e: ExprId<'a>) {
         match e.data(self.db) {
-            ExprData::Number(n) => self.push_inst(Inst::Push(n)),
+            ExprData::Number(n) => self.push_inst(Inst::PushInt(n)),
             ExprData::Binop(op, expr1, expr2) => {
                 self.lower(expr1);
                 self.lower(expr2);
@@ -75,7 +75,9 @@ impl<'a> Builder<'a> {
                 self.terminate_current_block(Terminator::Jmp(next_block));
 
                 self.switch_to_block(el_block);
-                self.lower(el);
+                if let Some(el) = el {
+                    self.lower(el);
+                }
                 self.terminate_current_block(Terminator::Jmp(next_block));
 
                 self.switch_to_block(next_block);
@@ -121,6 +123,16 @@ impl<'a> Builder<'a> {
                     self.lower(e);
                 }
             }
+            ExprData::Bool(b) => self.push_inst(Inst::PushBool(b)),
+            ExprData::Seq(e1, e2) => {
+                self.lower(e1);
+                let tp = self.type_map.get(&e1).unwrap();
+                let size = tp.get_size();
+                for _ in 0..size {
+                    self.push_inst(Inst::Drop);
+                }
+                self.lower(e2);
+            }
         }
     }
 
@@ -131,7 +143,10 @@ impl<'a> Builder<'a> {
             | ExprData::FnCall(_, _)
             | ExprData::While(_, _)
             | ExprData::Assign(_, _)
+            | ExprData::AddressOf(_)
+            | ExprData::Bool(_)
             | ExprData::Tuple(_)
+            | ExprData::If(_, _, _)
             | ExprData::Number(_) => panic!(),
             ExprData::Let(pat, e1, e2) => {
                 self.lower(e1);
@@ -139,15 +154,20 @@ impl<'a> Builder<'a> {
                 self.lower_pat(pat, tp);
                 self.lower_place(e2)
             }
-            ExprData::If(cond, th, el) => {
-                todo!()
-            }
             ExprData::Var(x) => Some(self.get_var(x)),
             ExprData::Deref(e) => {
                 self.lower(e);
                 None
             }
-            ExprData::AddressOf(expr_id) => todo!(),
+            ExprData::Seq(e1, e2) => {
+                self.lower(e1);
+                let tp = self.type_map.get(&e1).unwrap();
+                let size = tp.get_size();
+                for _ in 0..size {
+                    self.push_inst(Inst::Drop);
+                }
+                self.lower_place(e2)
+            }
         }
     }
 
@@ -168,7 +188,7 @@ impl<'a> Builder<'a> {
             }
             PatternData::Tuple(pats) => {
                 if let Type::Tuple(tps) = tp {
-                    for (pat, tp) in pats.into_iter().zip(tps.into_iter()) {
+                    for (pat, tp) in pats.into_iter().zip(tps) {
                         self.lower_pat(pat, tp);
                     }
                 } else {
