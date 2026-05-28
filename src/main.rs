@@ -29,8 +29,6 @@ fn main() {
 
     let sf = Source::new(db, text.clone());
 
-    let functions = input::parse_file(db, sf);
-
     driver::type_check_file(db, sf);
 
     let diags = driver::type_check_file::accumulated::<Diagnostic>(db, sf);
@@ -46,7 +44,7 @@ fn main() {
         exit(-1);
     }
 
-    let prog = driver::compile(db, functions);
+    let prog = driver::compile(db, sf);
 
     println!("{prog:#?}");
 
