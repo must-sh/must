@@ -10,7 +10,21 @@ pub struct Span<'db> {
 
 #[salsa::tracked(debug)]
 pub struct File<'db> {
-    pub defs: Vec<FnDef<'db>>,
+    pub defs: Vec<Def<'db>>,
+}
+
+#[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::Update)]
+pub enum Def<'db> {
+    Fn(FnDef<'db>),
+    Struct(StructDef<'db>),
+}
+
+#[salsa::tracked(debug)]
+pub struct StructDef<'db> {
+    pub name: Ident<'db>,
+    pub span: Span<'db>,
+    pub fields: Vec<(Ident<'db>, TypeExprId<'db>)>,
+    pub sf: Source,
 }
 
 #[salsa::tracked(debug)]
@@ -48,6 +62,9 @@ pub enum ExprData<'db> {
     Tuple(Vec<ExprId<'db>>),
     Seq(ExprId<'db>, ExprId<'db>),
 
+    Struct(Ident<'db>, Vec<(Ident<'db>, ExprId<'db>)>),
+    Field(ExprId<'db>, Ident<'db>),
+
     Error,
 }
 
@@ -77,10 +94,17 @@ pub enum TypeExprData<'db> {
     Ptr(TypeExprId<'db>, bool),
     Fn(Vec<TypeExprId<'db>>, TypeExprId<'db>),
     Tuple(Vec<TypeExprId<'db>>),
+    Var(Ident<'db>),
 }
 
 #[salsa::interned(debug)]
 pub struct Ident {
     #[returns(ref)]
     pub text: String,
+}
+
+impl<'db> Ident<'db> {
+    pub fn get_id(&self) -> usize {
+        self.0.as_bits() as usize
+    }
 }

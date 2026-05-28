@@ -5,7 +5,7 @@ use salsa::Database;
 use crate::{
     ast::{ExprData, ExprId, Ident, PatternData, PatternId},
     bytecode::{Block, Func, Inst, Terminator},
-    tp::Type,
+    tp::{Type, TypeInfo},
 };
 
 pub struct Builder<'a> {
@@ -14,17 +14,23 @@ pub struct Builder<'a> {
     variable_map: HashMap<Ident<'a>, usize>,
     counter: usize,
     type_map: &'a HashMap<ExprId<'a>, Type>,
+    type_defs: &'a HashMap<usize, TypeInfo<'a>>,
     db: &'a dyn Database,
 }
 
 impl<'a> Builder<'a> {
-    pub fn new(db: &'a dyn Database, type_map: &'a HashMap<ExprId<'a>, Type>) -> Self {
+    pub fn new(
+        db: &'a dyn Database,
+        type_map: &'a HashMap<ExprId<'a>, Type>,
+        type_defs: &'a HashMap<usize, TypeInfo<'a>>,
+    ) -> Self {
         Self {
             variable_map: HashMap::new(),
             counter: 0,
             blocks: vec![Block::empty()],
             current_block: 0,
             type_map,
+            type_defs,
             db,
         }
     }
@@ -49,7 +55,7 @@ impl<'a> Builder<'a> {
             }
             ExprData::Var(x) => {
                 let tp = self.type_map.get(&e).unwrap();
-                let size = tp.get_size();
+                let size = tp.get_size(self.type_defs);
                 let id = self.get_var(x);
                 for i in id..id + size {
                     self.push_inst(Inst::Get(i));
@@ -127,11 +133,49 @@ impl<'a> Builder<'a> {
             ExprData::Seq(e1, e2) => {
                 self.lower(e1);
                 let tp = self.type_map.get(&e1).unwrap();
-                let size = tp.get_size();
+                let size = tp.get_size(self.type_defs);
                 for _ in 0..size {
                     self.push_inst(Inst::Drop);
                 }
                 self.lower(e2);
+            }
+            ExprData::Struct(ident, exprs) => {
+                let info = self.type_defs.get(&ident.get_id()).unwrap();
+                let mut fields = info
+                    .fields
+                    .iter()
+                    .map(|(name, (id, _))| (id, name))
+                    .collect::<Vec<_>>();
+                fields.sort_by_key(|(id, _)| **id);
+                let mut exprs_map: HashMap<_, _> = exprs.into_iter().collect();
+                for (_, name) in fields {
+                    self.lower(exprs_map.remove(&name).unwrap())
+                }
+            }
+            ExprData::Field(expr, ident) => {
+                let tp = self.type_map.get(&expr).unwrap();
+                let offset = match tp {
+                    Type::Error
+                    | Type::Int
+                    | Type::Bool
+                    | Type::Fn(_)
+                    | Type::Ptr(_, _)
+                    | Type::Tuple(_) => panic!(),
+                    Type::Var(id) => {
+                        self.type_defs
+                            .get(id)
+                            .unwrap()
+                            .fields
+                            .get(&ident)
+                            .unwrap()
+                            .0
+                    }
+                };
+                if let Some(place) = self.lower_place(expr) {
+                    self.push_inst(Inst::Get(place + offset));
+                } else {
+                    todo!()
+                }
             }
         }
     }
@@ -147,7 +191,8 @@ impl<'a> Builder<'a> {
             | ExprData::Bool(_)
             | ExprData::Tuple(_)
             | ExprData::If(_, _, _)
-            | ExprData::Number(_) => panic!(),
+            | ExprData::Struct(_, _) => todo!(),
+            ExprData::Number(_) => panic!(),
             ExprData::Let(pat, e1, e2) => {
                 self.lower(e1);
                 let tp = self.type_map.get(&e1).unwrap();
@@ -162,25 +207,27 @@ impl<'a> Builder<'a> {
             ExprData::Seq(e1, e2) => {
                 self.lower(e1);
                 let tp = self.type_map.get(&e1).unwrap();
-                let size = tp.get_size();
+                let size = tp.get_size(self.type_defs);
                 for _ in 0..size {
                     self.push_inst(Inst::Drop);
                 }
                 self.lower_place(e2)
             }
+
+            ExprData::Field(expr_id, ident) => todo!(),
         }
     }
 
     pub fn lower_pat(&mut self, pat: PatternId<'a>, tp: &Type) {
         match pat.data(self.db) {
             PatternData::Wildcard => {
-                let size = tp.get_size();
+                let size = tp.get_size(self.type_defs);
                 for _ in 0..size {
                     self.push_inst(Inst::Drop);
                 }
             }
             PatternData::Var(name, _) => {
-                let size = tp.get_size();
+                let size = tp.get_size(self.type_defs);
                 let id = self.new_var(name, size);
                 for i in id..id + size {
                     self.push_inst(Inst::Set(i));

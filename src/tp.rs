@@ -5,6 +5,7 @@ use salsa::{Accumulator, Database};
 use crate::{
     ast::{ExprData, ExprId, Ident, PatternData, PatternId, Span},
     diagnostic::Diagnostic,
+    resolve::ModuleDefs,
 };
 
 #[derive(Debug, PartialEq, Clone, salsa::Update)]
@@ -16,6 +17,7 @@ pub enum Type {
     Fn(FnSig),
     Ptr(Box<Type>, bool),
     Tuple(Vec<Type>),
+    Var(usize),
 }
 
 impl Type {
@@ -24,6 +26,7 @@ impl Type {
             (_, Type::Error) | (Type::Error, _) => true,
             (Type::Int, Type::Int) => true,
             (Type::Bool, Type::Bool) => true,
+            (Type::Var(id1), Type::Var(id2)) => id1 == id2,
             (Type::Tuple(tps1), Type::Tuple(tps2)) => {
                 tps1.len() == tps2.len()
                     && tps1
@@ -55,11 +58,18 @@ impl Type {
         }
     }
 
-    pub fn get_size(&self) -> usize {
+    pub fn get_size<'db>(&self, type_map: &HashMap<usize, TypeInfo<'db>>) -> usize {
         match self {
             Type::Error => panic!(),
             Type::Int | Type::Bool | Type::Fn(_) | Type::Ptr(_, _) => 1,
-            Type::Tuple(tps) => tps.iter().map(|tp| tp.get_size()).sum(),
+            Type::Tuple(tps) => tps.iter().map(|tp| tp.get_size(type_map)).sum(),
+            Type::Var(id) => {
+                let info = type_map.get(id).unwrap();
+                info.fields
+                    .iter()
+                    .map(|(_, tp)| tp.1.get_size(type_map))
+                    .sum()
+            }
         }
     }
 }
@@ -75,9 +85,15 @@ pub struct InferenceResult<'db> {
     pub type_map: HashMap<ExprId<'db>, Type>,
 }
 
+#[derive(Debug, PartialEq, Clone, salsa::Update)]
+pub struct TypeInfo<'db> {
+    pub name: Ident<'db>,
+    pub fields: HashMap<Ident<'db>, (usize, Type)>,
+}
+
 pub struct Env<'a> {
     scopes: Vec<HashMap<Ident<'a>, VarBinding>>,
-    function_defs: HashMap<Ident<'a>, FnSig>,
+    mod_defs: ModuleDefs<'a>,
     type_map: HashMap<ExprId<'a>, Type>,
     db: &'a dyn Database,
 }
@@ -108,7 +124,11 @@ impl Diagnostic {
     }
 
     pub fn cannot_dereference(db: &dyn Database, span: Span) -> Self {
-        Diagnostic::error(db, span, "this expression cannot be dereferenced".to_string())
+        Diagnostic::error(
+            db,
+            span,
+            "this expression cannot be dereferenced".to_string(),
+        )
     }
 
     pub fn unexpected_tuple(db: &dyn Database, span: Span, n: usize, tp: &Type) -> Self {
@@ -125,11 +145,11 @@ impl Diagnostic {
 }
 
 impl<'a> Env<'a> {
-    pub fn new(db: &'a dyn Database, function_defs: HashMap<Ident<'a>, FnSig>) -> Self {
+    pub fn new(db: &'a dyn Database, mod_defs: ModuleDefs<'a>) -> Self {
         let scopes = vec![HashMap::new()];
         Self {
             scopes,
-            function_defs,
+            mod_defs,
             type_map: HashMap::new(),
             db,
         }
@@ -181,7 +201,7 @@ impl<'a> Env<'a> {
                 }
             },
             ExprData::FnCall(fn_name, exprs) => {
-                let sig = match self.function_defs.get(&fn_name) {
+                let sig = match self.mod_defs.function_map.get(&fn_name) {
                     Some(sig) => sig.clone(),
                     None => return (Type::Error, true),
                 };
@@ -252,6 +272,48 @@ impl<'a> Env<'a> {
                 self.infer_expr(e1);
                 self.infer_expr(e2)
             }
+            ExprData::Struct(ident, mut items) => {
+                let tp = if let Some(tp_info) = self.get_type_info(ident.get_id()) {
+                    for (field, tp) in tp_info.fields {
+                        let mut iter = items.extract_if(.., |(name, _)| *name == field);
+                        match (iter.next(), iter.next()) {
+                            (Some((_, expr)), None) => {
+                                self.check_expr(expr, &tp.1, false);
+                            }
+                            (Some(_), Some(_)) => todo!(),
+                            (None, _) => todo!(),
+                        }
+                    }
+                    Type::Var(tp_info.name.get_id())
+                } else {
+                    // TODO: Diagnostic
+                    Type::Error
+                };
+                (tp, false)
+            }
+            ExprData::Field(expr, ident) => {
+                let (tp, is_mut) = self.infer_expr(expr);
+                match tp {
+                    Type::Ptr(_, _)
+                    | Type::Error
+                    | Type::Int
+                    | Type::Bool
+                    | Type::Fn(_)
+                    | Type::Tuple(_) => panic!(),
+                    Type::Var(id) => {
+                        if let Some(tp_info) = self.get_type_info(id) {
+                            if let Some(tp) = tp_info.fields.get(&ident) {
+                                (tp.1.clone(), is_mut)
+                            } else {
+                                todo!()
+                            }
+                        } else {
+                            // TODO: Diagnostic
+                            return (Type::Error, true);
+                        }
+                    }
+                }
+            }
         };
         self.type_map.insert(e, tp.clone());
         (tp, is_mut)
@@ -282,7 +344,8 @@ impl<'a> Env<'a> {
             .find_map(|scope| scope.get(&x))
             .cloned()
             .or_else(|| {
-                self.function_defs
+                self.mod_defs
+                    .function_map
                     .get(&x)
                     .cloned()
                     .map(Type::Fn)
@@ -323,6 +386,10 @@ impl<'a> Env<'a> {
         InferenceResult {
             type_map: self.type_map,
         }
+    }
+
+    fn get_type_info(&self, id: usize) -> Option<TypeInfo<'a>> {
+        self.mod_defs.type_map.get(&id).cloned()
     }
 }
 

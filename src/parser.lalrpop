@@ -32,11 +32,29 @@ TwoOrMore<T>: Vec<T> = {
 // ==== Grammar ================================================================
 
 pub File: File<'db> = {
-    <defs: FnDef+> => File::new(db, defs),
+    <defs: Def+> => File::new(db, defs),
 }
 
 FnArg: (PatternId<'db>, TypeExprId<'db>) = {
     <pat: Pattern> ":" <tp: TypeExpr> => (pat, tp),
+}
+
+Def: Def<'db> = {
+    FnDef => Def::Fn(<>),
+    StructDef => Def::Struct(<>),
+}
+
+StructField: (Ident<'db>, TypeExprId<'db>) = {
+    <id: Ident> ":" <tp: TypeExpr> => (id, tp),
+}
+
+StructDef: StructDef<'db> = {
+    "struct" <l: @L> <id: Ident> <r: @R> "{"
+        <fields: CommaSep<StructField>>
+    "}" => {
+            let span = Span::new(db, l, r);
+            StructDef::new(db, id, span, fields, source)
+        }
 }
 
 FnDef: FnDef<'db> = {
@@ -62,7 +80,7 @@ FnDef: FnDef<'db> = {
 }
 
 Ident: Ident<'db> = {
-    r"[a-z_]+" => Ident::new(db, <>.to_string())
+    r"[a-zA-Z_]+" => Ident::new(db, <>.to_string())
 }
 
 Num: i32 = <s: r"[0-9]+"> => s.parse().unwrap();
@@ -98,7 +116,7 @@ Expr1Data: ExprData<'db> = {
 
 Expr3Data: ExprData<'db> = {
     "if" <cond: Expr0> "{" <th: Expr0> "}" <el: ("else" "{" <Expr0> "}")?> => ExprData::If(cond, th, el),
-    "while" <cond: Expr0> "{" <body: Expr0> "}" => ExprData::While(cond, body),
+    "while" <cond: Expr5> "{" <body: Expr0> "}" => ExprData::While(cond, body),
     Expr5Data,
 }
 
@@ -141,11 +159,18 @@ Expr40Data: ExprData<'db> = {
     "true" => ExprData::Bool(true),
     "false" => ExprData::Bool(false),
 
+    <e: Expr40> "." <id: Ident> => ExprData::Field(e, id),
+    <id: Ident> ".{" <fields: CommaSep<StructInit>> "}" => ExprData::Struct(id, fields),
+
     ! => {
         Diagnostic::parser_error(<>.error).accumulate(db);
         ExprData::Error
     }
 };
+
+StructInit: (Ident<'db>, ExprId<'db>) = {
+    <id: Ident> "=" <e: Expr0> => (id, e),
+}
 
 // ==== Patterns ===============================================================
 
@@ -184,4 +209,5 @@ TypeExprData: TypeExprData<'db> = {
     "*" "mut" <tp: TypeExpr> => TypeExprData::Ptr(tp, true),
     "(" ")" => TypeExprData::Tuple(vec![]),
     "(" <tps: TwoOrMore<TypeExpr>> ")" => TypeExprData::Tuple(tps),
+    <id: Ident> => TypeExprData::Var(id),
 }

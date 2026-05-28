@@ -1,7 +1,7 @@
 use crate::{
     ast::{self, FnDef, Ident, TypeExprId},
     input::{self, Source},
-    tp::{FnSig, Type},
+    tp::{FnSig, Type, TypeInfo},
 };
 use salsa::Database;
 use std::collections::HashMap;
@@ -28,12 +28,14 @@ pub(crate) fn parse_type_expr<'db>(db: &'db dyn Database, tp: TypeExprId<'db>) -
             let tps = tps.into_iter().map(|tp| parse_type_expr(db, tp)).collect();
             Type::Tuple(tps)
         }
+        ast::TypeExprData::Var(id) => Type::Var(id.get_id()),
     }
 }
 
 #[derive(Debug, PartialEq, Clone, salsa::Update)]
 pub struct ModuleDefs<'db> {
-    pub(crate) defs: HashMap<Ident<'db>, FnSig>,
+    pub function_map: HashMap<Ident<'db>, FnSig>,
+    pub type_map: HashMap<usize, TypeInfo<'db>>,
 }
 
 #[salsa::tracked]
@@ -52,16 +54,36 @@ pub fn parse_fn_signature<'db>(db: &'db dyn Database, func: FnDef<'db>) -> FnSig
     FnSig { args, ret }
 }
 
-#[salsa::tracked]
-pub(crate) fn get_defs<'db>(db: &'db dyn Database, sf: Source) -> ModuleDefs<'db> {
-    let mut defs = HashMap::new();
+pub fn get_defs<'db>(db: &'db dyn Database, sf: Source) -> ModuleDefs<'db> {
+    let mut function_map = HashMap::new();
+    let mut type_map = HashMap::new();
 
     let file = input::parse_file(db, sf);
 
-    for func in file.defs(db) {
-        let sig = parse_fn_signature(db, func);
-        defs.insert(func.name(db), sig);
+    for def in file.defs(db) {
+        match def {
+            ast::Def::Fn(func) => {
+                let sig = parse_fn_signature(db, func);
+                function_map.insert(func.name(db), sig);
+            }
+            ast::Def::Struct(tp_def) => {
+                let name = tp_def.name(db);
+                let info = TypeInfo {
+                    name,
+                    fields: tp_def
+                        .fields(db)
+                        .into_iter()
+                        .enumerate()
+                        .map(|(id, (name, tp))| (name, (id, parse_type_expr(db, tp))))
+                        .collect(),
+                };
+                type_map.insert(name.get_id(), info);
+            }
+        }
     }
 
-    ModuleDefs { defs }
+    ModuleDefs {
+        function_map,
+        type_map,
+    }
 }

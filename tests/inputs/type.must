@@ -1,0 +1,24 @@
+
+struct Point {
+    x: int,
+    y: int,
+}
+
+fn square(x: int) -> int {
+    x * x
+}
+
+fn distance(p: Point) -> int {
+    square(p.x) + square(p.y)
+}
+
+fn modify(p: *mut Point) {
+    (*p).x = (*p).y - 1
+}
+
+fn main() -> int {
+    let mut p = Point .{ x = 0, y = 0 } in
+    p.y = 4;
+    modify(&p);
+    distance(p)
+}
