@@ -15,6 +15,9 @@ pub enum Inst {
     Load { offset: usize, size: usize },
     Store { offset: usize, size: usize },
 
+    // REF, INT -> REF + INT
+    CapOffset,
+
     Drop,
 
     Call(String),

@@ -160,7 +160,9 @@ Expr40Data: ExprData<'db> = {
     "false" => ExprData::Bool(false),
 
     <e: Expr40> "." <id: Ident> => ExprData::Field(e, id),
+    <e1: Expr40> "[" <e2: Expr0> "]" => ExprData::Index(e1, e2),
     <id: Ident> ".{" <fields: CommaSep<StructInit>> "}" => ExprData::Struct(id, fields),
+    "[" <exprs: CommaSep<Expr0>> "]" => ExprData::Array(exprs),
 
     ! => {
         Diagnostic::parser_error(<>.error).accumulate(db);
@@ -210,4 +212,5 @@ TypeExprData: TypeExprData<'db> = {
     "(" ")" => TypeExprData::Tuple(vec![]),
     "(" <tps: TwoOrMore<TypeExpr>> ")" => TypeExprData::Tuple(tps),
     <id: Ident> => TypeExprData::Var(id),
+    "[" <n: Num> "]" <tp: TypeExpr> => TypeExprData::Array(n as usize, tp),
 }

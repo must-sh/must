@@ -5,6 +5,7 @@ use salsa::Database;
 use crate::{
     ast::{ExprData, ExprId, Ident, PatternData, PatternId},
     bytecode::{Block, Func, Inst, Terminator},
+    common::Op,
     tp::{Type, TypeInfo},
 };
 
@@ -124,13 +125,13 @@ impl<'a> Builder<'a> {
                 self.lower(expr);
                 self.push_inst(Inst::Load { offset: 0, size });
             }
-            ExprData::AddressOf(e) => {
-                if let Place::Local(id) = self.lower_place(e) {
-                    self.push_inst(Inst::LocalAddr(id));
-                } else {
-                    panic!()
+            ExprData::AddressOf(e) => match self.lower_place(e) {
+                Place::Local(id) => self.push_inst(Inst::LocalAddr(id)),
+                Place::Ref { offset } => {
+                    self.push_inst(Inst::PushInt(offset as i32));
+                    self.push_inst(Inst::CapOffset)
                 }
-            }
+            },
             ExprData::Tuple(exprs) => {
                 for e in exprs {
                     self.lower(e);
@@ -161,16 +162,40 @@ impl<'a> Builder<'a> {
             }
             ExprData::Field(expr, ident) => {
                 let tp_struct = self.type_map.get(&expr).unwrap();
-                let offset = self.get_offset(tp_struct.as_var_id(), ident);
+                let this_offset = self.get_offset(tp_struct.as_var_id(), ident);
                 let tp_field = self.type_map.get(&e).unwrap();
                 let size = tp_field.get_size(self.type_defs);
                 match self.lower_place(expr) {
                     Place::Local(place) => self.push_inst(Inst::Get {
-                        id: place + offset,
+                        id: place + this_offset,
                         size,
                     }),
-                    Place::Ref { offset } => self.push_inst(Inst::Load { offset, size }),
+                    Place::Ref { offset } => self.push_inst(Inst::Load {
+                        offset: offset + this_offset,
+                        size,
+                    }),
                 }
+            }
+            ExprData::Array(exprs) => {
+                for e in exprs {
+                    self.lower(e);
+                }
+            }
+            ExprData::Index(e1, e2) => {
+                let offset = match self.lower_place(e1) {
+                    Place::Local(id) => {
+                        self.push_inst(Inst::LocalAddr(id));
+                        0
+                    }
+                    Place::Ref { offset } => offset,
+                };
+                self.lower(e2);
+                let tp = self.type_map.get(&e).unwrap();
+                let size = tp.get_size(self.type_defs);
+                self.push_inst(Inst::PushInt(size as i32));
+                self.push_inst(Inst::Binop(Op::Mul));
+                self.push_inst(Inst::CapOffset);
+                self.push_inst(Inst::Load { offset, size });
             }
         }
     }
@@ -197,6 +222,7 @@ impl<'a> Builder<'a> {
             | ExprData::Tuple(_)
             | ExprData::If(_, _, _)
             | ExprData::Number(_)
+            | ExprData::Array(_)
             | ExprData::Struct(_, _) => todo!(),
             ExprData::Let(pat, e1, e2) => {
                 self.lower(e1);
@@ -228,6 +254,22 @@ impl<'a> Builder<'a> {
                         offset: offset + this_offset,
                     },
                 }
+            }
+            ExprData::Index(e1, e2) => {
+                let offset = match self.lower_place(e1) {
+                    Place::Local(id) => {
+                        self.push_inst(Inst::LocalAddr(id));
+                        0
+                    }
+                    Place::Ref { offset } => offset,
+                };
+                self.lower(e2);
+                let tp = self.type_map.get(&e).unwrap();
+                let size = tp.get_size(self.type_defs);
+                self.push_inst(Inst::PushInt(size as i32));
+                self.push_inst(Inst::Binop(Op::Mul));
+                self.push_inst(Inst::CapOffset);
+                Place::Ref { offset }
             }
         }
     }
