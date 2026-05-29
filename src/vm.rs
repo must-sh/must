@@ -51,7 +51,7 @@ impl<'a> VM<'a> {
                             (Div, Int(y), Int(x)) => Int(x / y),
                             (Eq, Int(y), Int(x)) => Bool(x == y),
                             (Lt, Int(y), Int(x)) => Bool(x < y),
-                            _ => panic!(),
+                            _ => return None,
                         };
                         self.operand_stack.push(res)
                     }
@@ -92,6 +92,15 @@ impl<'a> VM<'a> {
                         self.operand_stack.pop()?;
                     }
                     Inst::PushBool(b) => self.operand_stack.push(Value::Bool(*b)),
+                    Inst::CapOffset => {
+                        use Value::*;
+                        match (self.operand_stack.pop()?, self.operand_stack.pop()?) {
+                            (Int(offset), Ref(ptr)) => {
+                                self.operand_stack.push(Ref(ptr + offset as usize));
+                            }
+                            _ => panic!(),
+                        }
+                    }
                 }
             }
 

@@ -1,0 +1,21 @@
+
+extern fn print(x: int);
+
+fn make_arr() -> [3]int {
+    [1, 2, 3]
+}
+
+fn modify(arr: *mut [3]int) {
+    (*arr)[2] = 42
+}
+
+fn arr_sum(arr: [3]int) -> int {
+    arr[0] + arr[1] + arr[2]
+}
+
+fn main() {
+    let mut arr = make_arr() in
+    arr[0] = 13;
+    modify(&arr);
+    print(arr_sum(arr))
+}

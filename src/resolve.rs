@@ -29,6 +29,7 @@ pub(crate) fn parse_type_expr<'db>(db: &'db dyn Database, tp: TypeExprId<'db>) -
             Type::Tuple(tps)
         }
         ast::TypeExprData::Var(id) => Type::Var(id.get_id()),
+        ast::TypeExprData::Array(n, tp) => Type::Array(n, Box::new(parse_type_expr(db, tp))),
     }
 }
 

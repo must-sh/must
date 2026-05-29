@@ -1,0 +1,21 @@
+
+struct S {
+    x: bool,
+    y: int,
+    z: int,
+}
+
+fn modify(s: *mut S) {
+    (*s).y = (*s).z + 42
+}
+
+fn main() -> int {
+    let mut arr = [
+        S .{ x = true, y = 0, z = 1 },
+        S .{ x = false, y = 2, z = 3 },
+        S .{ x = true, y = 4, z = 5 },
+    ] in
+    arr[1] = S .{ x = true, y = 6, z = 13 };
+    modify(&arr[1]);
+    arr[1].y
+}

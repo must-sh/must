@@ -18,6 +18,7 @@ pub enum Type {
     Ptr(Box<Type>, bool),
     Tuple(Vec<Type>),
     Var(usize),
+    Array(usize, Box<Type>),
 }
 
 impl Type {
@@ -36,6 +37,9 @@ impl Type {
             }
             (Type::Ptr(tp1, is_mut1), Type::Ptr(tp2, is_mut2)) => {
                 (!is_mut2 || *is_mut1) && tp1.coerce_into(tp2) && (!is_mut2 || tp2.coerce_into(tp1))
+            }
+            (Type::Array(n1, tp1), Type::Array(n2, tp2)) => {
+                n1 == n2 && tp1.coerce_into(tp2) && tp2.coerce_into(tp1)
             }
             (
                 Self::Fn(FnSig {
@@ -70,6 +74,7 @@ impl Type {
                     .map(|(_, tp)| tp.1.get_size(type_map))
                     .sum()
             }
+            Type::Array(n, tp) => n * tp.get_size(type_map),
         }
     }
 
@@ -80,6 +85,7 @@ impl Type {
             | Type::Bool
             | Type::Fn(_)
             | Type::Ptr(_, _)
+            | Type::Array(_, _)
             | Type::Tuple(_) => panic!(),
             Type::Var(id) => *id,
         }
@@ -153,6 +159,10 @@ impl Diagnostic {
 
     pub fn cannot_assign(db: &dyn Database, span: Span) -> Self {
         Diagnostic::error(db, span, "this expression cannot be mutated".to_string())
+    }
+
+    pub fn cannot_index(db: &dyn Database, span: Span) -> Self {
+        Diagnostic::error(db, span, "this expression cannot be indexed".to_string())
     }
 
     pub fn cannot_dereference(db: &dyn Database, span: Span) -> Self {
@@ -330,11 +340,12 @@ impl<'a> Env<'a> {
             ExprData::Field(expr, ident) => {
                 let (tp, is_mut) = self.infer_expr(expr);
                 match tp {
+                    Type::Error => (Type::Error, true),
                     Type::Ptr(_, _)
-                    | Type::Error
                     | Type::Int
                     | Type::Bool
                     | Type::Fn(_)
+                    | Type::Array(_, _)
                     | Type::Tuple(_) => {
                         Diagnostic::no_field_on_type(db, e.span(db), ident, &tp).accumulate(db);
                         (Type::Error, true)
@@ -353,6 +364,37 @@ impl<'a> Env<'a> {
                         }
                     }
                 }
+            }
+            ExprData::Array(mut exprs) => {
+                if exprs.is_empty() {
+                    (Type::Tuple(vec![]), false)
+                } else {
+                    let n = exprs.len();
+                    let first_expr = exprs.swap_remove(0);
+                    let (tp, _) = self.infer_expr(first_expr);
+                    for e in exprs {
+                        self.check_expr(e, &tp, false);
+                    }
+                    (Type::Array(n, Box::new(tp)), false)
+                }
+            }
+            ExprData::Index(e1, e2) => {
+                let (tp, is_mut) = self.infer_expr(e1);
+                let tp = match tp {
+                    Type::Error => Type::Error,
+                    Type::Int
+                    | Type::Bool
+                    | Type::Fn(_)
+                    | Type::Ptr(_, _)
+                    | Type::Tuple(_)
+                    | Type::Var(_) => {
+                        Diagnostic::cannot_index(db, e1.span(db)).accumulate(db);
+                        Type::Error
+                    }
+                    Type::Array(_, tp) => *tp,
+                };
+                self.check_expr(e2, &Type::Int, false);
+                (tp, is_mut)
             }
         };
         self.type_map.insert(e, tp.clone());
