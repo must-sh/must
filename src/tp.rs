@@ -72,6 +72,18 @@ impl Type {
             }
         }
     }
+
+    pub fn as_var_id(&self) -> usize {
+        match self {
+            Type::Error
+            | Type::Int
+            | Type::Bool
+            | Type::Fn(_)
+            | Type::Ptr(_, _)
+            | Type::Tuple(_) => panic!(),
+            Type::Var(id) => *id,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone, salsa::Update)]
@@ -115,8 +127,28 @@ impl Diagnostic {
         Diagnostic::error(db, span, format!("unexpected arg #{}", id))
     }
 
-    pub fn unbound_var(db: &dyn Database, span: Span, name: &str) -> Self {
-        Diagnostic::error(db, span, format!("unbound var: {:?}", name))
+    pub fn unbound_var(db: &dyn Database, span: Span, name: Ident) -> Self {
+        Diagnostic::error(db, span, format!("unbound var: {:?}", name.text(db)))
+    }
+
+    pub fn unknown_type(db: &dyn Database, span: Span, name: Ident) -> Self {
+        Diagnostic::error(db, span, format!("unknown type: {:?}", name.text(db)))
+    }
+
+    pub fn duplicate_field(db: &dyn Database, span: Span, name: Ident) -> Self {
+        Diagnostic::error(db, span, format!("duplicate field: {:?}", name.text(db)))
+    }
+
+    pub fn missing_field(db: &dyn Database, span: Span, name: Ident) -> Self {
+        Diagnostic::error(db, span, format!("missing field: {:?}", name.text(db)))
+    }
+
+    pub fn no_field_on_type(db: &dyn Database, span: Span, name: Ident, tp: &Type) -> Self {
+        Diagnostic::error(
+            db,
+            span,
+            format!("no field named {:?} on type {:?}", name.text(db), tp),
+        )
     }
 
     pub fn cannot_assign(db: &dyn Database, span: Span) -> Self {
@@ -166,7 +198,8 @@ impl<'a> Env<'a> {
     }
 
     pub fn infer_expr(&mut self, e: ExprId<'a>) -> (Type, bool) {
-        let (tp, is_mut) = match e.data(self.db) {
+        let db = self.db;
+        let (tp, is_mut) = match e.data(db) {
             ExprData::Number(_) => (Type::Int, false),
             ExprData::Binop(op, expr, expr1) => {
                 use crate::common::Op::*;
@@ -195,15 +228,17 @@ impl<'a> Env<'a> {
             ExprData::Var(x) => match self.get_var(x) {
                 Some(VarBinding { tp, is_mut }) => (tp.clone(), is_mut),
                 None => {
-                    Diagnostic::unbound_var(self.db, e.span(self.db), x.text(self.db))
-                        .accumulate(self.db);
+                    Diagnostic::unbound_var(db, e.span(db), x).accumulate(db);
                     (Type::Error, true)
                 }
             },
             ExprData::FnCall(fn_name, exprs) => {
                 let sig = match self.mod_defs.function_map.get(&fn_name) {
                     Some(sig) => sig.clone(),
-                    None => return (Type::Error, true),
+                    None => {
+                        Diagnostic::unbound_var(db, e.span(db), fn_name).accumulate(db);
+                        return (Type::Error, true);
+                    }
                 };
                 let mut tp_args = sig.args.iter();
                 let mut id = 0;
@@ -212,16 +247,14 @@ impl<'a> Env<'a> {
                     let exp_tp = match tp_args.next() {
                         Some(tp) => tp,
                         None => {
-                            Diagnostic::unexpected_argument(self.db, id, e.span(self.db))
-                                .accumulate(self.db);
+                            Diagnostic::unexpected_argument(db, id, e.span(db)).accumulate(db);
                             continue;
                         }
                     };
                     self.check_expr(e, exp_tp, false);
                 }
                 if let Some(tp) = tp_args.next() {
-                    Diagnostic::missing_argument(self.db, id, e.span(self.db), tp)
-                        .accumulate(self.db);
+                    Diagnostic::missing_argument(db, id, e.span(db), tp).accumulate(db);
                 }
                 (*sig.ret.clone(), false)
             }
@@ -233,8 +266,7 @@ impl<'a> Env<'a> {
                     self.check_expr(el, &tp, false);
                 } else {
                     if !tp.coerce_into(&Type::Tuple(vec![])) {
-                        Diagnostic::missing_else_branch(self.db, e.span(self.db), &tp)
-                            .accumulate(self.db)
+                        Diagnostic::missing_else_branch(db, e.span(db), &tp).accumulate(db)
                     }
                 }
                 (tp, false)
@@ -247,7 +279,7 @@ impl<'a> Env<'a> {
             ExprData::Assign(e1, e2) => {
                 let (tp, is_mut) = self.infer_expr(e1);
                 if !is_mut {
-                    Diagnostic::cannot_assign(self.db, e1.span(self.db)).accumulate(self.db);
+                    Diagnostic::cannot_assign(db, e1.span(db)).accumulate(db);
                 }
                 self.check_expr(e2, &tp, false);
                 (Type::Tuple(vec![]), false)
@@ -255,7 +287,7 @@ impl<'a> Env<'a> {
             ExprData::Deref(e) => match self.infer_expr(e).0 {
                 Type::Ptr(tp, is_mut) => (*tp, is_mut),
                 _ => {
-                    Diagnostic::cannot_dereference(self.db, e.span(self.db)).accumulate(self.db);
+                    Diagnostic::cannot_dereference(db, e.span(db)).accumulate(db);
                     (Type::Error, true)
                 }
             },
@@ -280,13 +312,17 @@ impl<'a> Env<'a> {
                             (Some((_, expr)), None) => {
                                 self.check_expr(expr, &tp.1, false);
                             }
-                            (Some(_), Some(_)) => todo!(),
-                            (None, _) => todo!(),
+                            (Some(_), Some(_)) => {
+                                Diagnostic::duplicate_field(db, e.span(db), field).accumulate(db);
+                            }
+                            (None, _) => {
+                                Diagnostic::missing_field(db, e.span(db), field).accumulate(db);
+                            }
                         }
                     }
                     Type::Var(tp_info.name.get_id())
                 } else {
-                    // TODO: Diagnostic
+                    Diagnostic::unknown_type(db, e.span(db), ident).accumulate(db);
                     Type::Error
                 };
                 (tp, false)
@@ -299,17 +335,21 @@ impl<'a> Env<'a> {
                     | Type::Int
                     | Type::Bool
                     | Type::Fn(_)
-                    | Type::Tuple(_) => panic!(),
+                    | Type::Tuple(_) => {
+                        Diagnostic::no_field_on_type(db, e.span(db), ident, &tp).accumulate(db);
+                        (Type::Error, true)
+                    }
                     Type::Var(id) => {
                         if let Some(tp_info) = self.get_type_info(id) {
                             if let Some(tp) = tp_info.fields.get(&ident) {
                                 (tp.1.clone(), is_mut)
                             } else {
-                                todo!()
+                                Diagnostic::no_field_on_type(db, e.span(db), ident, &tp)
+                                    .accumulate(db);
+                                (Type::Error, true)
                             }
                         } else {
-                            // TODO: Diagnostic
-                            return (Type::Error, true);
+                            panic!()
                         }
                     }
                 }

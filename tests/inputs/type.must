@@ -1,4 +1,6 @@
 
+extern fn print(x: int);
+
 struct Point {
     x: int,
     y: int,
@@ -16,9 +18,24 @@ fn modify(p: *mut Point) {
     (*p).x = (*p).y - 1
 }
 
-fn main() -> int {
-    let mut p = Point .{ x = 0, y = 0 } in
+fn swap(x: *mut Point, y: *mut Point) {
+    let tmp = *x in
+    *x = *y;
+    *y = tmp
+}
+
+fn make_zero() -> Point {
+    Point .{ x = 0, y = 0 }
+}
+
+fn main() {
+    let mut p = make_zero() in
+    let mut x = p in
+    p.x = 3;
     p.y = 4;
-    modify(&p);
-    distance(p)
+    swap(&x, &p);
+    print(p.x);
+    print(p.y);
+    print(x.x);
+    print(x.y)
 }

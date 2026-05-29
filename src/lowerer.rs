@@ -8,6 +8,11 @@ use crate::{
     tp::{Type, TypeInfo},
 };
 
+pub enum Place {
+    Local(usize),
+    Ref { offset: usize },
+}
+
 pub struct Builder<'a> {
     blocks: Vec<Block>,
     current_block: usize,
@@ -57,9 +62,7 @@ impl<'a> Builder<'a> {
                 let tp = self.type_map.get(&e).unwrap();
                 let size = tp.get_size(self.type_defs);
                 let id = self.get_var(x);
-                for i in id..id + size {
-                    self.push_inst(Inst::Get(i));
-                }
+                self.push_inst(Inst::Get { id, size });
             }
             ExprData::FnCall(name, args) => {
                 for arg in args.into_iter().rev() {
@@ -106,19 +109,23 @@ impl<'a> Builder<'a> {
                 self.switch_to_block(next_block);
             }
             ExprData::Assign(e1, e2) => {
-                let id = self.lower_place(e1);
+                let tp = self.type_map.get(&e1).unwrap();
+                let size = tp.get_size(self.type_defs);
                 self.lower(e2);
+                let id = self.lower_place(e1);
                 match id {
-                    Some(id) => self.push_inst(Inst::Set(id)),
-                    None => self.push_inst(Inst::Store(0)),
+                    Place::Local(id) => self.push_inst(Inst::Set { id, size }),
+                    Place::Ref { offset } => self.push_inst(Inst::Store { offset, size }),
                 }
             }
-            ExprData::Deref(e) => {
-                self.lower(e);
-                self.push_inst(Inst::Load(0));
+            ExprData::Deref(expr) => {
+                let tp = self.type_map.get(&e).unwrap();
+                let size = tp.get_size(self.type_defs);
+                self.lower(expr);
+                self.push_inst(Inst::Load { offset: 0, size });
             }
             ExprData::AddressOf(e) => {
-                if let Some(id) = self.lower_place(e) {
+                if let Place::Local(id) = self.lower_place(e) {
                     self.push_inst(Inst::LocalAddr(id));
                 } else {
                     panic!()
@@ -153,34 +160,32 @@ impl<'a> Builder<'a> {
                 }
             }
             ExprData::Field(expr, ident) => {
-                let tp = self.type_map.get(&expr).unwrap();
-                let offset = match tp {
-                    Type::Error
-                    | Type::Int
-                    | Type::Bool
-                    | Type::Fn(_)
-                    | Type::Ptr(_, _)
-                    | Type::Tuple(_) => panic!(),
-                    Type::Var(id) => {
-                        self.type_defs
-                            .get(id)
-                            .unwrap()
-                            .fields
-                            .get(&ident)
-                            .unwrap()
-                            .0
-                    }
-                };
-                if let Some(place) = self.lower_place(expr) {
-                    self.push_inst(Inst::Get(place + offset));
-                } else {
-                    todo!()
+                let tp_struct = self.type_map.get(&expr).unwrap();
+                let offset = self.get_offset(tp_struct.as_var_id(), ident);
+                let tp_field = self.type_map.get(&e).unwrap();
+                let size = tp_field.get_size(self.type_defs);
+                match self.lower_place(expr) {
+                    Place::Local(place) => self.push_inst(Inst::Get {
+                        id: place + offset,
+                        size,
+                    }),
+                    Place::Ref { offset } => self.push_inst(Inst::Load { offset, size }),
                 }
             }
         }
     }
 
-    pub fn lower_place(&mut self, e: ExprId<'a>) -> Option<usize> {
+    pub fn get_offset(&mut self, type_id: usize, field_name: Ident<'_>) -> usize {
+        let fields = &self.type_defs.get(&type_id).unwrap().fields;
+        let field_id = fields.get(&field_name).unwrap().0;
+        fields
+            .iter()
+            .filter(|(_, (id, _))| *id < field_id)
+            .map(|(_, (_, tp))| tp.get_size(self.type_defs))
+            .sum()
+    }
+
+    pub fn lower_place(&mut self, e: ExprId<'a>) -> Place {
         match e.data(self.db) {
             ExprData::Binop(_, _, _)
             | ExprData::Error
@@ -191,18 +196,18 @@ impl<'a> Builder<'a> {
             | ExprData::Bool(_)
             | ExprData::Tuple(_)
             | ExprData::If(_, _, _)
+            | ExprData::Number(_)
             | ExprData::Struct(_, _) => todo!(),
-            ExprData::Number(_) => panic!(),
             ExprData::Let(pat, e1, e2) => {
                 self.lower(e1);
                 let tp = self.type_map.get(&e1).unwrap();
                 self.lower_pat(pat, tp);
                 self.lower_place(e2)
             }
-            ExprData::Var(x) => Some(self.get_var(x)),
+            ExprData::Var(x) => Place::Local(self.get_var(x)),
             ExprData::Deref(e) => {
                 self.lower(e);
-                None
+                Place::Ref { offset: 0 }
             }
             ExprData::Seq(e1, e2) => {
                 self.lower(e1);
@@ -214,7 +219,16 @@ impl<'a> Builder<'a> {
                 self.lower_place(e2)
             }
 
-            ExprData::Field(expr_id, ident) => todo!(),
+            ExprData::Field(expr, ident) => {
+                let tp = self.type_map.get(&expr).unwrap();
+                let this_offset = self.get_offset(tp.as_var_id(), ident);
+                match self.lower_place(expr) {
+                    Place::Local(id) => Place::Local(id + this_offset),
+                    Place::Ref { offset } => Place::Ref {
+                        offset: offset + this_offset,
+                    },
+                }
+            }
         }
     }
 
@@ -229,9 +243,7 @@ impl<'a> Builder<'a> {
             PatternData::Var(name, _) => {
                 let size = tp.get_size(self.type_defs);
                 let id = self.new_var(name, size);
-                for i in id..id + size {
-                    self.push_inst(Inst::Set(i));
-                }
+                self.push_inst(Inst::Set { id, size });
             }
             PatternData::Tuple(pats) => {
                 if let Type::Tuple(tps) = tp {

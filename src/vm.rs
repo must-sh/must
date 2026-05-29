@@ -55,29 +55,37 @@ impl<'a> VM<'a> {
                         };
                         self.operand_stack.push(res)
                     }
-                    Inst::Set(n) => {
-                        let val = self.operand_stack.pop()?;
-                        self.stack[bp + *n] = val;
+                    Inst::Set { id, size } => {
+                        for i in (0..*size).rev() {
+                            let val = self.operand_stack.pop()?;
+                            self.stack[bp + *id + i] = val;
+                        }
                     }
-                    Inst::Get(n) => {
-                        let val = self.stack[bp + *n];
-                        self.operand_stack.push(val);
+                    Inst::Get { id, size } => {
+                        for i in 0..*size {
+                            let val = self.stack[bp + *id + i];
+                            self.operand_stack.push(val);
+                        }
                     }
                     Inst::Call(name) => self.eval_func(name)?,
                     Inst::LocalAddr(n) => {
                         let ptr = Value::Ref(bp + *n);
                         self.operand_stack.push(ptr)
                     }
-                    Inst::Load(offset) => {
+                    Inst::Load { offset, size } => {
                         if let Value::Ref(ptr) = self.operand_stack.pop()? {
-                            let val = self.stack[ptr + offset];
-                            self.operand_stack.push(val);
+                            for i in 0..*size {
+                                let val = self.stack[ptr + offset + i];
+                                self.operand_stack.push(val);
+                            }
                         }
                     }
-                    Inst::Store(offset) => {
-                        let val = self.operand_stack.pop()?;
+                    Inst::Store { offset, size } => {
                         if let Value::Ref(ptr) = self.operand_stack.pop()? {
-                            self.stack[ptr + offset] = val;
+                            for i in (0..*size).rev() {
+                                let val = self.operand_stack.pop()?;
+                                self.stack[ptr + offset + i] = val;
+                            }
                         }
                     }
                     Inst::Drop => {

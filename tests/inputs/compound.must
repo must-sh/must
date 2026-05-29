@@ -1,0 +1,24 @@
+
+extern fn print(x: int);
+
+struct S {
+    x: int,
+    y: int,
+}
+
+struct T {
+    s: S,
+    b: bool,
+    id: int,
+}
+
+fn modify(t: *mut T) {
+    (*t).b = false
+}
+
+fn main() -> bool {
+    let s = S .{ x = 3, y = 13 } in
+    let mut t = T .{ s = s, b = true, id = 0 } in
+    modify(&t);
+    t.b
+}
