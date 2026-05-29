@@ -8,12 +8,12 @@ pub enum Inst {
     PushBool(bool),
     Binop(Op),
 
-    Set(usize),
-    Get(usize),
+    Set { id: usize, size: usize },
+    Get { id: usize, size: usize },
     LocalAddr(usize),
 
-    Load(usize),
-    Store(usize),
+    Load { offset: usize, size: usize },
+    Store { offset: usize, size: usize },
 
     Drop,
 
