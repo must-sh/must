@@ -68,6 +68,8 @@ pub enum ExprData<'db> {
     Array(Vec<ExprId<'db>>),
     Index(ExprId<'db>, ExprId<'db>),
 
+    Range(ExprId<'db>, ExprId<'db>),
+
     Error,
 }
 
@@ -99,6 +101,7 @@ pub enum TypeExprData<'db> {
     Tuple(Vec<TypeExprId<'db>>),
     Var(Ident<'db>),
     Array(usize, TypeExprId<'db>),
+    Slice(TypeExprId<'db>, bool),
 }
 
 #[salsa::interned(debug)]

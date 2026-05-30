@@ -46,7 +46,7 @@ fn main() {
 
     let prog = driver::compile(db, sf);
 
-    println!("{prog:#?}");
+    println!("{prog}");
 
     let mut vm = VM::new(&prog.funcs);
 
