@@ -162,7 +162,7 @@ impl<'a> Builder<'a> {
             }
             ExprData::Field(expr, ident) => {
                 let tp_struct = self.type_map.get(&expr).unwrap();
-                let this_offset = self.get_offset(tp_struct.as_var_id(), ident);
+                let this_offset = self.get_offset(tp_struct, ident);
                 let tp_field = self.type_map.get(&e).unwrap();
                 let size = tp_field.get_size(self.type_defs);
                 match self.lower_place(expr) {
@@ -181,33 +181,65 @@ impl<'a> Builder<'a> {
                     self.lower(e);
                 }
             }
-            ExprData::Index(e1, e2) => {
-                let offset = match self.lower_place(e1) {
-                    Place::Local(id) => {
-                        self.push_inst(Inst::LocalAddr(id));
-                        0
-                    }
-                    Place::Ref { offset } => offset,
-                };
-                self.lower(e2);
+            ExprData::Index(_, e2) => {
                 let tp = self.type_map.get(&e).unwrap();
                 let size = tp.get_size(self.type_defs);
-                self.push_inst(Inst::PushInt(size as i32));
-                self.push_inst(Inst::Binop(Op::Mul));
-                self.push_inst(Inst::CapOffset);
-                self.push_inst(Inst::Load { offset, size });
+                match self.type_map.get(&e2).unwrap() {
+                    Type::Error => todo!(),
+                    Type::Int => {
+                        if let Place::Ref { offset } = self.lower_place(e) {
+                            self.push_inst(Inst::Load { offset, size });
+                        } else {
+                            panic!()
+                        }
+                    }
+                    Type::Bool => todo!(),
+                    Type::Range => {
+                        self.lower_place(e);
+                        self.lower(e2);
+                        self.push_inst(Inst::Binop(Op::Sub));
+                        self.push_inst(Inst::PushInt(-1));
+                        self.push_inst(Inst::Binop(Op::Mul));
+                    }
+                    Type::Fn(fn_sig) => todo!(),
+                    Type::Ptr(_, _) => todo!(),
+                    Type::Slice(_, _) => (),
+                    Type::Tuple(items) => todo!(),
+                    Type::Var(_) => todo!(),
+                    Type::Array(_, _) => todo!(),
+                }
+            }
+            ExprData::Range(e1, e2) => {
+                self.lower(e1);
+                self.lower(e2);
             }
         }
     }
 
-    pub fn get_offset(&mut self, type_id: usize, field_name: Ident<'_>) -> usize {
-        let fields = &self.type_defs.get(&type_id).unwrap().fields;
-        let field_id = fields.get(&field_name).unwrap().0;
-        fields
-            .iter()
-            .filter(|(_, (id, _))| *id < field_id)
-            .map(|(_, (_, tp))| tp.get_size(self.type_defs))
-            .sum()
+    pub fn get_offset(&mut self, tp: &Type, field_name: Ident<'_>) -> usize {
+        match tp {
+            Type::Error
+            | Type::Int
+            | Type::Bool
+            | Type::Range
+            | Type::Fn(_)
+            | Type::Ptr(_, _)
+            | Type::Tuple(_)
+            | Type::Array(_, _) => panic!(),
+            Type::Slice(_, _) => {
+                assert_eq!(field_name.text(self.db), "len");
+                1
+            }
+            Type::Var(id) => {
+                let fields = &self.type_defs.get(&id).unwrap().fields;
+                let field_id = fields.get(&field_name).unwrap().0;
+                fields
+                    .iter()
+                    .filter(|(_, (id, _))| *id < field_id)
+                    .map(|(_, (_, tp))| tp.get_size(self.type_defs))
+                    .sum()
+            }
+        }
     }
 
     pub fn lower_place(&mut self, e: ExprId<'a>) -> Place {
@@ -223,6 +255,7 @@ impl<'a> Builder<'a> {
             | ExprData::If(_, _, _)
             | ExprData::Number(_)
             | ExprData::Array(_)
+            | ExprData::Range(_, _)
             | ExprData::Struct(_, _) => todo!(),
             ExprData::Let(pat, e1, e2) => {
                 self.lower(e1);
@@ -247,7 +280,7 @@ impl<'a> Builder<'a> {
 
             ExprData::Field(expr, ident) => {
                 let tp = self.type_map.get(&expr).unwrap();
-                let this_offset = self.get_offset(tp.as_var_id(), ident);
+                let this_offset = self.get_offset(tp, ident);
                 match self.lower_place(expr) {
                     Place::Local(id) => Place::Local(id + this_offset),
                     Place::Ref { offset } => Place::Ref {
@@ -256,17 +289,39 @@ impl<'a> Builder<'a> {
                 }
             }
             ExprData::Index(e1, e2) => {
-                let offset = match self.lower_place(e1) {
-                    Place::Local(id) => {
-                        self.push_inst(Inst::LocalAddr(id));
-                        0
+                let tp = self.type_map.get(&e2).unwrap();
+                let e1_tp = self.type_map.get(&e1).unwrap();
+                let elem_size = {
+                    match e1_tp {
+                        Type::Error
+                        | Type::Int
+                        | Type::Bool
+                        | Type::Range
+                        | Type::Fn(_)
+                        | Type::Ptr(_, _)
+                        | Type::Tuple(_)
+                        | Type::Var(_) => panic!(),
+                        Type::Slice(tp, _) | Type::Array(_, tp) => tp.get_size(self.type_defs),
                     }
-                    Place::Ref { offset } => offset,
+                };
+                let offset = if matches!(e1_tp, Type::Slice(_, _)) {
+                    self.lower(e1);
+                    self.push_inst(Inst::Drop);
+                    0
+                } else {
+                    match self.lower_place(e1) {
+                        Place::Local(id) => {
+                            self.push_inst(Inst::LocalAddr(id));
+                            0
+                        }
+                        Place::Ref { offset } => offset,
+                    }
                 };
                 self.lower(e2);
-                let tp = self.type_map.get(&e).unwrap();
-                let size = tp.get_size(self.type_defs);
-                self.push_inst(Inst::PushInt(size as i32));
+                if matches!(tp, Type::Range) {
+                    self.push_inst(Inst::Drop);
+                }
+                self.push_inst(Inst::PushInt(elem_size as i32));
                 self.push_inst(Inst::Binop(Op::Mul));
                 self.push_inst(Inst::CapOffset);
                 Place::Ref { offset }

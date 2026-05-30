@@ -14,8 +14,10 @@ pub enum Type {
 
     Int,
     Bool,
+    Range,
     Fn(FnSig),
     Ptr(Box<Type>, bool),
+    Slice(Box<Type>, bool),
     Tuple(Vec<Type>),
     Var(usize),
     Array(usize, Box<Type>),
@@ -27,6 +29,7 @@ impl Type {
             (_, Type::Error) | (Type::Error, _) => true,
             (Type::Int, Type::Int) => true,
             (Type::Bool, Type::Bool) => true,
+            (Type::Range, Type::Range) => true,
             (Type::Var(id1), Type::Var(id2)) => id1 == id2,
             (Type::Tuple(tps1), Type::Tuple(tps2)) => {
                 tps1.len() == tps2.len()
@@ -36,6 +39,9 @@ impl Type {
                         .all(|(tp1, tp2)| tp1.coerce_into(tp2))
             }
             (Type::Ptr(tp1, is_mut1), Type::Ptr(tp2, is_mut2)) => {
+                (!is_mut2 || *is_mut1) && tp1.coerce_into(tp2) && (!is_mut2 || tp2.coerce_into(tp1))
+            }
+            (Type::Slice(tp1, is_mut1), Type::Slice(tp2, is_mut2)) => {
                 (!is_mut2 || *is_mut1) && tp1.coerce_into(tp2) && (!is_mut2 || tp2.coerce_into(tp1))
             }
             (Type::Array(n1, tp1), Type::Array(n2, tp2)) => {
@@ -66,6 +72,7 @@ impl Type {
         match self {
             Type::Error => panic!(),
             Type::Int | Type::Bool | Type::Fn(_) | Type::Ptr(_, _) => 1,
+            Type::Range | Type::Slice(_, _) => 2,
             Type::Tuple(tps) => tps.iter().map(|tp| tp.get_size(type_map)).sum(),
             Type::Var(id) => {
                 let info = type_map.get(id).unwrap();
@@ -75,19 +82,6 @@ impl Type {
                     .sum()
             }
             Type::Array(n, tp) => n * tp.get_size(type_map),
-        }
-    }
-
-    pub fn as_var_id(&self) -> usize {
-        match self {
-            Type::Error
-            | Type::Int
-            | Type::Bool
-            | Type::Fn(_)
-            | Type::Ptr(_, _)
-            | Type::Array(_, _)
-            | Type::Tuple(_) => panic!(),
-            Type::Var(id) => *id,
         }
     }
 }
@@ -163,6 +157,14 @@ impl Diagnostic {
 
     pub fn cannot_index(db: &dyn Database, span: Span) -> Self {
         Diagnostic::error(db, span, "this expression cannot be indexed".to_string())
+    }
+
+    pub fn cannot_index_with(db: &dyn Database, span: Span) -> Self {
+        Diagnostic::error(
+            db,
+            span,
+            "this expression cannot be use as an index".to_string(),
+        )
     }
 
     pub fn cannot_dereference(db: &dyn Database, span: Span) -> Self {
@@ -344,6 +346,7 @@ impl<'a> Env<'a> {
                     Type::Ptr(_, _)
                     | Type::Int
                     | Type::Bool
+                    | Type::Range
                     | Type::Fn(_)
                     | Type::Array(_, _)
                     | Type::Tuple(_) => {
@@ -363,6 +366,14 @@ impl<'a> Env<'a> {
                             panic!()
                         }
                     }
+                    Type::Slice(_, _) => {
+                        if ident.text(db) == "len" {
+                            (Type::Int, false)
+                        } else {
+                            Diagnostic::no_field_on_type(db, e.span(db), ident, &tp).accumulate(db);
+                            (Type::Error, true)
+                        }
+                    }
                 }
             }
             ExprData::Array(mut exprs) => {
@@ -380,21 +391,41 @@ impl<'a> Env<'a> {
             }
             ExprData::Index(e1, e2) => {
                 let (tp, is_mut) = self.infer_expr(e1);
-                let tp = match tp {
-                    Type::Error => Type::Error,
+                let (tp, is_mut) = match tp {
+                    Type::Error => (Type::Error, true),
                     Type::Int
                     | Type::Bool
+                    | Type::Range
                     | Type::Fn(_)
                     | Type::Ptr(_, _)
                     | Type::Tuple(_)
                     | Type::Var(_) => {
                         Diagnostic::cannot_index(db, e1.span(db)).accumulate(db);
-                        Type::Error
+                        (Type::Error, true)
                     }
-                    Type::Array(_, tp) => *tp,
+                    Type::Slice(tp, is_mut) => (*tp, is_mut),
+                    Type::Array(_, tp) => (*tp, is_mut),
                 };
+                match self.infer_expr(e2).0 {
+                    Type::Error => (Type::Error, true),
+                    Type::Range => (Type::Slice(Box::new(tp), is_mut), false),
+                    Type::Int => (tp, is_mut),
+                    Type::Bool
+                    | Type::Fn(_)
+                    | Type::Ptr(_, _)
+                    | Type::Slice(_, _)
+                    | Type::Tuple(_)
+                    | Type::Var(_)
+                    | Type::Array(_, _) => {
+                        Diagnostic::cannot_index_with(db, e1.span(db)).accumulate(db);
+                        (Type::Error, true)
+                    }
+                }
+            }
+            ExprData::Range(e1, e2) => {
+                self.check_expr(e1, &Type::Int, false);
                 self.check_expr(e2, &Type::Int, false);
-                (tp, is_mut)
+                (Type::Range, false)
             }
         };
         self.type_map.insert(e, tp.clone());

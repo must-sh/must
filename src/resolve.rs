@@ -30,6 +30,10 @@ pub(crate) fn parse_type_expr<'db>(db: &'db dyn Database, tp: TypeExprId<'db>) -
         }
         ast::TypeExprData::Var(id) => Type::Var(id.get_id()),
         ast::TypeExprData::Array(n, tp) => Type::Array(n, Box::new(parse_type_expr(db, tp))),
+        ast::TypeExprData::Slice(tp, is_mut) => {
+            let tp = Box::new(parse_type_expr(db, tp));
+            Type::Slice(tp, is_mut)
+        }
     }
 }
 

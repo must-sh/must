@@ -1,0 +1,63 @@
+
+extern fn malloc(size: int) -> []mut int;
+extern fn print(x: int);
+
+fn sort(arr: []mut int) {
+    let tmp = malloc(arr.len) in
+    sort_aux(arr, tmp)
+}
+
+fn and(x: bool, y: bool) -> bool {
+    if x { y } else { false }
+}
+
+fn sort_aux(arr: []mut int, tmp: []mut int) {
+    let n = arr.len in
+    if 1 < n {
+        let m = n / 2 in
+        sort_aux(arr[0..m], tmp[0..m]);
+        sort_aux(arr[m..n], tmp[m..n]);
+
+        let mut i = 0 in
+        let mut j = 0 in
+        let mut k = m in
+
+        while and(j < m, k < n) {
+            if arr[k] < arr[j] {
+                tmp[i] = arr[k];
+                k = k + 1
+            } else {
+                tmp[i] = arr[j];
+                j = j + 1
+            };
+            i = i + 1
+        };
+
+        while j < m {
+            tmp[i] = arr[j];
+            i = i + 1;
+            j = j + 1
+        };
+
+        while k < n {
+            tmp[i] = arr[k];
+            i = i + 1;
+            k = k + 1
+        };
+
+        while 0 < i {
+            i = i - 1;
+            arr[i] = tmp[i]
+        }
+    }
+}
+
+fn main() {
+    let mut arr = [4, 8, 2, 5, 3, 1, 7, 6, 9] in
+    sort(arr[0..9]);
+    let mut i = 0 in
+    while i < 9 {
+        print(arr[i]);
+        i = i + 1
+    }
+}

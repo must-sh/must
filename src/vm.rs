@@ -4,9 +4,10 @@ use crate::bytecode::{Func, Inst, Terminator};
 
 pub struct VM<'a> {
     funcs: &'a HashMap<String, Func>,
-    operand_stack: Vec<Value>,
-    stack: [Value; 4096],
-    stack_pointer: usize,
+    vstack: Vec<Value>,
+    memory: [Value; 8192],
+    sp: usize,
+    hp: usize,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -18,12 +19,13 @@ pub enum Value {
 
 impl<'a> VM<'a> {
     pub fn new(funcs: &'a HashMap<String, Func>) -> Self {
-        let operand_stack = vec![];
+        let vstack = vec![];
         Self {
             funcs,
-            operand_stack,
-            stack: [Value::Int(0); 4096],
-            stack_pointer: 0,
+            vstack,
+            memory: [Value::Int(0); 8192],
+            sp: 0,
+            hp: 4096,
         }
     }
 
@@ -33,70 +35,73 @@ impl<'a> VM<'a> {
             None => return self.call_intrinsic(name),
         };
 
-        let bp = self.stack_pointer;
-        self.stack_pointer += f.variables;
+        let bp = self.sp;
+        self.sp += f.variables;
+        if self.sp >= 4096 {
+            return panic!();
+        }
 
         let mut current_block = 0;
         loop {
             for inst in &f.blocks[current_block].insts {
                 match inst {
-                    Inst::PushInt(n) => self.operand_stack.push(Value::Int(*n)),
+                    Inst::PushInt(n) => self.vstack.push(Value::Int(*n)),
                     Inst::Binop(op) => {
                         use crate::common::Op::*;
                         use Value::*;
-                        let res = match (op, self.operand_stack.pop()?, self.operand_stack.pop()?) {
+                        let res = match (op, self.vstack.pop()?, self.vstack.pop()?) {
                             (Add, Int(y), Int(x)) => Int(x + y),
                             (Sub, Int(y), Int(x)) => Int(x - y),
                             (Mul, Int(y), Int(x)) => Int(x * y),
                             (Div, Int(y), Int(x)) => Int(x / y),
                             (Eq, Int(y), Int(x)) => Bool(x == y),
                             (Lt, Int(y), Int(x)) => Bool(x < y),
-                            _ => return None,
+                            x => panic!("{:#?}\n stack:\n{:#?}", x, &self.memory[0..self.sp]),
                         };
-                        self.operand_stack.push(res)
+                        self.vstack.push(res)
                     }
                     Inst::Set { id, size } => {
                         for i in (0..*size).rev() {
-                            let val = self.operand_stack.pop()?;
-                            self.stack[bp + *id + i] = val;
+                            let val = self.vstack.pop()?;
+                            self.memory[bp + *id + i] = val;
                         }
                     }
                     Inst::Get { id, size } => {
                         for i in 0..*size {
-                            let val = self.stack[bp + *id + i];
-                            self.operand_stack.push(val);
+                            let val = self.memory[bp + *id + i];
+                            self.vstack.push(val);
                         }
                     }
                     Inst::Call(name) => self.eval_func(name)?,
                     Inst::LocalAddr(n) => {
                         let ptr = Value::Ref(bp + *n);
-                        self.operand_stack.push(ptr)
+                        self.vstack.push(ptr)
                     }
                     Inst::Load { offset, size } => {
-                        if let Value::Ref(ptr) = self.operand_stack.pop()? {
+                        if let Value::Ref(ptr) = self.vstack.pop()? {
                             for i in 0..*size {
-                                let val = self.stack[ptr + offset + i];
-                                self.operand_stack.push(val);
+                                let val = self.memory[ptr + offset + i];
+                                self.vstack.push(val);
                             }
                         }
                     }
                     Inst::Store { offset, size } => {
-                        if let Value::Ref(ptr) = self.operand_stack.pop()? {
+                        if let Value::Ref(ptr) = self.vstack.pop()? {
                             for i in (0..*size).rev() {
-                                let val = self.operand_stack.pop()?;
-                                self.stack[ptr + offset + i] = val;
+                                let val = self.vstack.pop()?;
+                                self.memory[ptr + offset + i] = val;
                             }
                         }
                     }
                     Inst::Drop => {
-                        self.operand_stack.pop()?;
+                        self.vstack.pop()?;
                     }
-                    Inst::PushBool(b) => self.operand_stack.push(Value::Bool(*b)),
+                    Inst::PushBool(b) => self.vstack.push(Value::Bool(*b)),
                     Inst::CapOffset => {
                         use Value::*;
-                        match (self.operand_stack.pop()?, self.operand_stack.pop()?) {
+                        match (self.vstack.pop()?, self.vstack.pop()?) {
                             (Int(offset), Ref(ptr)) => {
-                                self.operand_stack.push(Ref(ptr + offset as usize));
+                                self.vstack.push(Ref(ptr + offset as usize));
                             }
                             _ => panic!(),
                         }
@@ -107,12 +112,12 @@ impl<'a> VM<'a> {
             match &f.blocks[current_block].terminator {
                 Terminator::Jmp(id) => current_block = *id,
                 Terminator::Br(th, el) => {
-                    if let Value::Bool(cond) = self.operand_stack.pop()? {
+                    if let Value::Bool(cond) = self.vstack.pop()? {
                         current_block = if cond { *th } else { *el };
                     }
                 }
                 Terminator::Ret => {
-                    self.stack_pointer = bp;
+                    self.sp = bp;
                     return Some(());
                 }
             }
@@ -128,19 +133,30 @@ impl<'a> VM<'a> {
                     .trim()
                     .parse::<i32>()
                     .expect("this is not a valid integer");
-                self.operand_stack.push(Value::Int(val));
+                self.vstack.push(Value::Int(val));
                 Some(())
             }
             "print" => {
-                let val = self.operand_stack.pop()?;
+                let val = self.vstack.pop()?;
                 println!("{val:?}");
                 Some(())
+            }
+            "malloc" => {
+                if let Value::Int(n) = self.vstack.pop()? {
+                    let ptr = self.hp;
+                    self.hp += n as usize;
+                    self.vstack.push(Value::Ref(ptr));
+                    self.vstack.push(Value::Int(n));
+                    Some(())
+                } else {
+                    panic!()
+                }
             }
             _ => panic!("unknown intrinsic: {name}"),
         }
     }
 
     pub fn finish(mut self) -> Option<Value> {
-        self.operand_stack.pop()
+        self.vstack.pop()
     }
 }
