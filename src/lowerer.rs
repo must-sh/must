@@ -5,7 +5,7 @@ use salsa::Database;
 use crate::{
     ast::{ExprData, ExprId, Ident, PatternData, PatternId},
     bytecode::{Block, Func, Inst, Terminator},
-    common::Op,
+    common::Binop,
     tp::{Type, TypeInfo},
 };
 
@@ -52,6 +52,10 @@ impl<'a> Builder<'a> {
                 self.lower(expr1);
                 self.lower(expr2);
                 self.push_inst(Inst::Binop(op));
+            }
+            ExprData::Unop(op, expr1) => {
+                self.lower(expr1);
+                self.push_inst(Inst::Unop(op));
             }
             ExprData::Let(pat, e1, e2) => {
                 self.lower(e1);
@@ -197,9 +201,9 @@ impl<'a> Builder<'a> {
                     Type::Range => {
                         self.lower_place(e);
                         self.lower(e2);
-                        self.push_inst(Inst::Binop(Op::Sub));
+                        self.push_inst(Inst::Binop(Binop::Sub));
                         self.push_inst(Inst::PushInt(-1));
-                        self.push_inst(Inst::Binop(Op::Mul));
+                        self.push_inst(Inst::Binop(Binop::Mul));
                     }
                     Type::Fn(fn_sig) => todo!(),
                     Type::Ptr(_, _) => todo!(),
@@ -245,6 +249,7 @@ impl<'a> Builder<'a> {
     pub fn lower_place(&mut self, e: ExprId<'a>) -> Place {
         match e.data(self.db) {
             ExprData::Binop(_, _, _)
+            | ExprData::Unop(_, _)
             | ExprData::Error
             | ExprData::FnCall(_, _)
             | ExprData::While(_, _)
@@ -322,7 +327,7 @@ impl<'a> Builder<'a> {
                     self.push_inst(Inst::Drop);
                 }
                 self.push_inst(Inst::PushInt(elem_size as i32));
-                self.push_inst(Inst::Binop(Op::Mul));
+                self.push_inst(Inst::Binop(Binop::Mul));
                 self.push_inst(Inst::CapOffset);
                 Place::Ref { offset }
             }

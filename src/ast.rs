@@ -1,4 +1,7 @@
-use crate::{common::Op, input::Source};
+use crate::{
+    common::{Binop, Unop},
+    input::Source,
+};
 
 #[salsa::tracked(debug)]
 pub struct Span<'db> {
@@ -48,7 +51,8 @@ pub struct ExprId {
 pub enum ExprData<'db> {
     Number(i32),
     Bool(bool),
-    Binop(Op, ExprId<'db>, ExprId<'db>),
+    Binop(Binop, ExprId<'db>, ExprId<'db>),
+    Unop(Unop, ExprId<'db>),
     Let(PatternId<'db>, ExprId<'db>, ExprId<'db>),
     Var(Ident<'db>),
     FnCall(Ident<'db>, Vec<ExprId<'db>>),

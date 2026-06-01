@@ -9,8 +9,8 @@ fn square(x: int) -> int {
 fn is_prime(x: int) -> bool {
     let mut res = true in
     let mut n = 2 in
-    while square(n) < x + 1 {
-        if (x / n) * n == x {
+    while square(n) <= x {
+        if x % n == 0 {
             res = false
         };
         n = n + 1

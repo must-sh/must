@@ -47,15 +47,32 @@ impl<'a> VM<'a> {
                 match inst {
                     Inst::PushInt(n) => self.vstack.push(Value::Int(*n)),
                     Inst::Binop(op) => {
-                        use crate::common::Op::*;
+                        use crate::common::Binop::*;
                         use Value::*;
                         let res = match (op, self.vstack.pop()?, self.vstack.pop()?) {
                             (Add, Int(y), Int(x)) => Int(x + y),
                             (Sub, Int(y), Int(x)) => Int(x - y),
                             (Mul, Int(y), Int(x)) => Int(x * y),
                             (Div, Int(y), Int(x)) => Int(x / y),
+                            (Mod, Int(y), Int(x)) => Int(x % y),
                             (Eq, Int(y), Int(x)) => Bool(x == y),
+                            (NEq, Int(y), Int(x)) => Bool(x != y),
                             (Lt, Int(y), Int(x)) => Bool(x < y),
+                            (Gt, Int(y), Int(x)) => Bool(x > y),
+                            (Le, Int(y), Int(x)) => Bool(x <= y),
+                            (Ge, Int(y), Int(x)) => Bool(x >= y),
+                            (And, Bool(y), Bool(x)) => Bool(x && y),
+                            (Or, Bool(y), Bool(x)) => Bool(x || y),
+                            x => panic!("{:#?}\n stack:\n{:#?}", x, &self.memory[0..self.sp]),
+                        };
+                        self.vstack.push(res)
+                    }
+                    Inst::Unop(op) => {
+                        use crate::common::Unop::*;
+                        use Value::*;
+                        let res = match (op, self.vstack.pop()?) {
+                            (Neg, Int(x)) => Int(-x),
+                            (Not, Bool(x)) => Bool(!x),
                             x => panic!("{:#?}\n stack:\n{:#?}", x, &self.memory[0..self.sp]),
                         };
                         self.vstack.push(res)

@@ -214,16 +214,35 @@ impl<'a> Env<'a> {
         let (tp, is_mut) = match e.data(db) {
             ExprData::Number(_) => (Type::Int, false),
             ExprData::Binop(op, expr, expr1) => {
-                use crate::common::Op::*;
+                use crate::common::Binop::*;
                 let tp = match op {
-                    Add | Sub | Mul | Div => {
+                    Add | Sub | Mul | Div | Mod => {
                         self.check_expr(expr, &Type::Int, false);
                         self.check_expr(expr1, &Type::Int, false);
                         Type::Int
                     }
-                    Eq | Lt => {
+                    Eq | Lt | NEq | Gt | Le | Ge => {
                         self.check_expr(expr, &Type::Int, false);
                         self.check_expr(expr1, &Type::Int, false);
+                        Type::Bool
+                    }
+                    And | Or => {
+                        self.check_expr(expr, &Type::Bool, false);
+                        self.check_expr(expr1, &Type::Bool, false);
+                        Type::Bool
+                    }
+                };
+                (tp, false)
+            }
+            ExprData::Unop(op, expr) => {
+                use crate::common::Unop::*;
+                let tp = match op {
+                    Neg => {
+                        self.check_expr(expr, &Type::Int, false);
+                        Type::Int
+                    }
+                    Not => {
+                        self.check_expr(expr, &Type::Bool, false);
                         Type::Bool
                     }
                 };

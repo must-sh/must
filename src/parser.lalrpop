@@ -1,7 +1,7 @@
 use crate::ast::*;
 use crate::diagnostic::Diagnostic;
 use salsa::Accumulator;
-use crate::common::Op;
+use crate::common::{Binop, Unop};
 
 grammar<'db>(db: &'db dyn salsa::Database, source: crate::input::Source);
 
@@ -98,6 +98,7 @@ Expr0 = SpannedExpr<Expr0Data>;
 Expr1 = SpannedExpr<Expr1Data>;
 Expr5 = SpannedExpr<Expr5Data>;
 Expr3 = SpannedExpr<Expr3Data>;
+Expr9 = SpannedExpr<Expr9Data>;
 Expr10 = SpannedExpr<Expr10Data>;
 Expr20 = SpannedExpr<Expr20Data>;
 Expr30 = SpannedExpr<Expr30Data>;
@@ -122,30 +123,43 @@ Expr3Data: ExprData<'db> = {
 
 Expr5Data: ExprData<'db> = {
     <e1: Expr10> "=" <e2: Expr5> => ExprData::Assign(e1, e2),
+    Expr9Data,
+}
+
+Expr9Data: ExprData<'db> = {
+    <x: Expr9> "&&" <y: Expr10> => ExprData::Binop(Binop::And, x, y),
+    <x: Expr9> "||" <y: Expr10> => ExprData::Binop(Binop::Or, x, y),
     Expr10Data,
 }
 
 Expr10Data: ExprData<'db> = {
-    <x: Expr10> "==" <y: Expr20> => ExprData::Binop(Op::Eq, x, y),
-    <x: Expr10> "<" <y: Expr20> => ExprData::Binop(Op::Lt, x, y),
+    <x: Expr10> "==" <y: Expr20> => ExprData::Binop(Binop::Eq, x, y),
+    <x: Expr10> "!=" <y: Expr20> => ExprData::Binop(Binop::NEq, x, y),
+    <x: Expr10> "<" <y: Expr20> => ExprData::Binop(Binop::Lt, x, y),
+    <x: Expr10> ">" <y: Expr20> => ExprData::Binop(Binop::Gt, x, y),
+    <x: Expr10> "<=" <y: Expr20> => ExprData::Binop(Binop::Le, x, y),
+    <x: Expr10> ">=" <y: Expr20> => ExprData::Binop(Binop::Ge, x, y),
     Expr20Data,
 }
 
 Expr20Data: ExprData<'db> = {
-    <x: Expr20> "+" <y: Expr30> => ExprData::Binop(Op::Add, x, y),
-    <x: Expr20> "-" <y: Expr30> => ExprData::Binop(Op::Sub, x, y),
+    <x: Expr20> "+" <y: Expr30> => ExprData::Binop(Binop::Add, x, y),
+    <x: Expr20> "-" <y: Expr30> => ExprData::Binop(Binop::Sub, x, y),
     Expr30Data,
 }
 
 Expr30Data: ExprData<'db> = {
-    <x: Expr30> "*" <y: Expr35> => ExprData::Binop(Op::Mul, x, y),
-    <x: Expr30> "/" <y: Expr35> => ExprData::Binop(Op::Div, x, y),
+    <x: Expr30> "*" <y: Expr35> => ExprData::Binop(Binop::Mul, x, y),
+    <x: Expr30> "/" <y: Expr35> => ExprData::Binop(Binop::Div, x, y),
+    <x: Expr30> "%" <y: Expr35> => ExprData::Binop(Binop::Mod, x, y),
     Expr35Data
 }
 
 Expr35Data: ExprData<'db> = {
     "*" <e: Expr35> => ExprData::Deref(e),
     "&" <e: Expr35> => ExprData::AddressOf(e),
+    "!" <e: Expr35> => ExprData::Unop(Unop::Not, e),
+    "-" <e: Expr35> => ExprData::Unop(Unop::Neg, e),
     <start: Expr40> ".." <end: Expr40> => ExprData::Range(start, end),
     Expr40Data
 }
