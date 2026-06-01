@@ -1,15 +1,13 @@
-use std::{
-    collections::HashMap,
-    fmt::{Display, write},
-};
+use std::{collections::HashMap, fmt::Display};
 
-use crate::common::Op;
+use crate::common::{Binop, Unop};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Inst {
     PushInt(i32),
     PushBool(bool),
-    Binop(Op),
+    Binop(Binop),
+    Unop(Unop),
 
     Set { id: usize, size: usize },
     Get { id: usize, size: usize },
@@ -31,7 +29,8 @@ impl Display for Inst {
         match self {
             Inst::PushInt(n) => write!(f, "push {n}"),
             Inst::PushBool(b) => write!(f, "push {b}"),
-            Inst::Binop(op) => write!(f, "{op:?}"),
+            Inst::Binop(op) => write!(f, "{op}"),
+            Inst::Unop(op) => write!(f, "{op}"),
             Inst::Set { id, size } => write!(f, "set {id} size: {size}"),
             Inst::Get { id, size } => write!(f, "get {id} size: {size}"),
             Inst::LocalAddr(n) => write!(f, "addr {n}"),

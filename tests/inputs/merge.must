@@ -7,13 +7,9 @@ fn sort(arr: []mut int) {
     sort_aux(arr, tmp)
 }
 
-fn and(x: bool, y: bool) -> bool {
-    if x { y } else { false }
-}
-
 fn sort_aux(arr: []mut int, tmp: []mut int) {
     let n = arr.len in
-    if 1 < n {
+    if n > 1 {
         let m = n / 2 in
         sort_aux(arr[0..m], tmp[0..m]);
         sort_aux(arr[m..n], tmp[m..n]);
@@ -22,7 +18,7 @@ fn sort_aux(arr: []mut int, tmp: []mut int) {
         let mut j = 0 in
         let mut k = m in
 
-        while and(j < m, k < n) {
+        while j < m && k < n {
             if arr[k] < arr[j] {
                 tmp[i] = arr[k];
                 k = k + 1
@@ -45,7 +41,7 @@ fn sort_aux(arr: []mut int, tmp: []mut int) {
             k = k + 1
         };
 
-        while 0 < i {
+        while i > 0 {
             i = i - 1;
             arr[i] = tmp[i]
         }
