@@ -6,6 +6,7 @@ use crate::{diagnostic::Diagnostic, input::Source, vm::VM};
 
 mod ast;
 mod bytecode;
+mod codegen;
 mod common;
 mod diagnostic;
 mod driver;
@@ -47,11 +48,14 @@ fn main() {
     let prog = driver::compile(db, sf);
 
     println!("{prog}");
-
     let mut vm = VM::new(&prog.funcs);
 
     match vm.eval_func("main") {
         Some(_) => println!("Result: {:?}", vm.finish()),
         None => println!("runtime error occured!"),
     }
+
+    let obj = codegen::compile(prog);
+    let bytes = obj.emit().unwrap();
+    std::fs::write("a.out", bytes).unwrap()
 }

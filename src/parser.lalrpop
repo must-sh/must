@@ -83,7 +83,7 @@ Ident: Ident<'db> = {
     r"[a-zA-Z_]+" => Ident::new(db, <>.to_string())
 }
 
-Num: i32 = <s: r"[0-9]+"> => s.parse().unwrap();
+Num: i64 = <s: r"[0-9]+"> => s.parse().unwrap();
 
 // ==== Expressions ============================================================
 

@@ -1,6 +1,5 @@
 
-extern fn print(x: int);
-extern fn read() -> int;
+extern fn must_print(x: int);
 
 fn square(x: int) -> int {
     x * x
@@ -21,7 +20,7 @@ fn is_prime(x: int) -> bool {
 fn main() {
     let mut i = 2 in
     while i < 30 {
-        if is_prime(i) { print(i) };
+        if is_prime(i) { must_print(i) };
         i = i + 1
     }
 }

@@ -1,9 +1,9 @@
 
-extern fn malloc(size: int) -> []mut int;
-extern fn print(x: int);
+extern fn must_alloc(size: int) -> []mut int;
+extern fn must_print(x: int);
 
 fn sort(arr: []mut int) {
-    let tmp = malloc(arr.len) in
+    let tmp = must_alloc(arr.len) in
     sort_aux(arr, tmp)
 }
 
@@ -53,7 +53,7 @@ fn main() {
     sort(arr[0..9]);
     let mut i = 0 in
     while i < 9 {
-        print(arr[i]);
+        must_print(arr[i]);
         i = i + 1
     }
 }

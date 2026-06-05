@@ -5,6 +5,10 @@ edition = "2024"
 
 [dependencies]
 ariadne = "0.6.0"
+cranelift-codegen = { version = "0.132.0", features = ["x86"] }
+cranelift-frontend = "0.132.0"
+cranelift-module = "0.132.0"
+cranelift-object = "0.132.0"
 lalrpop-util = "0.23.1"
 salsa = "0.26.2"
 

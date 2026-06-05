@@ -1,5 +1,5 @@
 
-extern fn print(x: int);
+extern fn must_print(x: int);
 
 struct Point {
     x: int,
@@ -34,8 +34,8 @@ fn main() {
     p.x = 3;
     p.y = 4;
     swap(&x, &p);
-    print(p.x);
-    print(p.y);
-    print(x.x);
-    print(x.y)
+    must_print(p.x);
+    must_print(p.y);
+    must_print(x.x);
+    must_print(x.y)
 }

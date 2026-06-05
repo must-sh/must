@@ -1,6 +1,6 @@
 
-extern fn print(x: int);
-extern fn read() -> int;
+extern fn must_print(x: int);
+extern fn must_read() -> int;
 
 fn square(x: int) -> int {
     x * x
@@ -11,9 +11,9 @@ fn is_even(x: int) -> bool {
 }
 
 fn main() {
-    let mut i = 10 in
+    let mut i = must_read() in
     while 0 < i {
-        print(i);
+        must_print(i);
         i = i - 1
     }
 }
