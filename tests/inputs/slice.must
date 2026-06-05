@@ -1,0 +1,9 @@
+
+
+fn foo(a: []int, b: []int) { () }
+
+fn main() {
+    let arr = [1, 2, 3] in
+    let slice = arr[0..3] in
+    foo(slice, slice)
+}

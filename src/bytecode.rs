@@ -1,25 +1,33 @@
 use std::{collections::HashMap, fmt::Display};
 
-use crate::common::{Binop, Unop};
+use crate::{
+    common::{Binop, Unop},
+    tp::FnSig,
+};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum Inst {
-    PushInt(i32),
+    PushInt(i64),
     PushBool(bool),
     Binop(Binop),
     Unop(Unop),
 
-    Set { id: usize, size: usize },
-    Get { id: usize, size: usize },
-    LocalAddr(usize),
+    Set { id: usize, offset: i32, tp: Type },
+    Get { id: usize, offset: i32, tp: Type },
+    LocalAddr { id: usize, offset: i32 },
 
-    Load { offset: usize, size: usize },
-    Store { offset: usize, size: usize },
+    // PTR ON TOP, VALUE SECOND
+    Load { offset: i32, tp: Type },
+    Store { offset: i32, tp: Type },
+
+    // SRC ON TOP, DST SECOND
+    MemCopy { size: u64 },
 
     // REF, INT -> REF + INT
     CapOffset,
 
-    Drop,
+    Drop(Type),
+    Dup,
 
     Call(String),
 }
@@ -31,19 +39,21 @@ impl Display for Inst {
             Inst::PushBool(b) => write!(f, "push {b}"),
             Inst::Binop(op) => write!(f, "{op}"),
             Inst::Unop(op) => write!(f, "{op}"),
-            Inst::Set { id, size } => write!(f, "set {id} size: {size}"),
-            Inst::Get { id, size } => write!(f, "get {id} size: {size}"),
-            Inst::LocalAddr(n) => write!(f, "addr {n}"),
-            Inst::Load { offset, size } => write!(f, "load offset: {offset} size: {size}"),
-            Inst::Store { offset, size } => write!(f, "store offset: {offset} size: {size}"),
+            Inst::Set { id, offset, tp } => write!(f, "set ${id} +{offset} {:?}", tp),
+            Inst::Get { id, offset, tp } => write!(f, "get ${id} +{offset} {:?}", tp),
+            Inst::LocalAddr { id, offset } => write!(f, "addr ${id} +{offset}"),
+            Inst::Load { offset, tp } => write!(f, "load +{offset}"),
+            Inst::Store { offset, tp } => write!(f, "store +{offset}"),
             Inst::CapOffset => write!(f, "capoffset"),
-            Inst::Drop => write!(f, "drop"),
+            Inst::Drop(tp) => write!(f, "drop"),
+            Inst::Dup => write!(f, "dup"),
             Inst::Call(name) => write!(f, "call {name:?}"),
+            Inst::MemCopy { size } => write!(f, "memcpy {size}"),
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct Block {
     pub insts: Vec<Inst>,
     pub terminator: Terminator,
@@ -84,10 +94,36 @@ impl Display for Terminator {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct Func {
     pub blocks: Vec<Block>,
-    pub variables: usize,
+    pub variables: Vec<u32>,
+    pub sig: FuncSig,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Type {
+    Int,
+    Bool,
+    Ref,
+    SRet,
+}
+
+impl Type {
+    pub fn get_size(&self) -> i32 {
+        match self {
+            Type::Int => 8,
+            Type::Bool => 1,
+            Type::Ref => 8,
+            Type::SRet => 8,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct FuncSig {
+    pub args: Vec<Type>,
+    pub rets: Vec<Type>,
 }
 
 impl Display for Func {
@@ -100,15 +136,16 @@ impl Display for Func {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct Prog {
     pub funcs: HashMap<String, Func>,
+    pub externs: HashMap<String, FuncSig>,
 }
 
 impl Display for Prog {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (name, func) in &self.funcs {
-            writeln!(f, "{name:?} ({}):", func.variables)?;
+            writeln!(f, "{name:?} ({}):", func.variables.len())?;
             writeln!(f, "{}", func)?;
         }
         Ok(())

@@ -4,6 +4,7 @@ use salsa::{Accumulator, Database};
 
 use crate::{
     ast::{ExprData, ExprId, Ident, PatternData, PatternId, Span},
+    bytecode,
     diagnostic::Diagnostic,
     resolve::ModuleDefs,
 };
@@ -68,11 +69,13 @@ impl Type {
         }
     }
 
-    pub fn get_size<'db>(&self, type_map: &HashMap<usize, TypeInfo<'db>>) -> usize {
+    pub fn get_size<'db>(&self, type_map: &HashMap<usize, TypeInfo<'db>>) -> i32 {
         match self {
             Type::Error => panic!(),
-            Type::Int | Type::Bool | Type::Fn(_) | Type::Ptr(_, _) => 1,
-            Type::Range | Type::Slice(_, _) => 2,
+            Type::Int => 8,
+            Type::Bool => 1,
+            Type::Fn(_) | Type::Ptr(_, _) => 8,
+            Type::Range | Type::Slice(_, _) => 16,
             Type::Tuple(tps) => tps.iter().map(|tp| tp.get_size(type_map)).sum(),
             Type::Var(id) => {
                 let info = type_map.get(id).unwrap();
@@ -81,7 +84,34 @@ impl Type {
                     .map(|(_, tp)| tp.1.get_size(type_map))
                     .sum()
             }
-            Type::Array(n, tp) => n * tp.get_size(type_map),
+            Type::Array(n, tp) => *n as i32 * tp.get_size(type_map),
+        }
+    }
+
+    pub(crate) fn layout(&self, type_map: &HashMap<usize, TypeInfo>) -> Vec<bytecode::Type> {
+        match self {
+            Type::Error => panic!(),
+            Type::Int => vec![bytecode::Type::Int],
+            Type::Bool => vec![bytecode::Type::Bool],
+            Type::Range => vec![bytecode::Type::Int, bytecode::Type::Int],
+            Type::Fn(_) => vec![bytecode::Type::Ref],
+            Type::Ptr(_, _) => vec![bytecode::Type::Ref],
+            Type::Slice(_, _) => vec![bytecode::Type::Ref, bytecode::Type::Int],
+            Type::Tuple(items) => items.iter().flat_map(|tp| tp.layout(type_map)).collect(),
+            Type::Var(id) => {
+                let info = type_map.get(&id).unwrap();
+                let mut fields = info
+                    .fields
+                    .iter()
+                    .map(|(_, (id, tp))| (id, tp))
+                    .collect::<Vec<_>>();
+                fields.sort_by_key(|(id, _)| **id);
+                fields
+                    .iter()
+                    .flat_map(|(_, tp)| tp.layout(type_map))
+                    .collect()
+            }
+            Type::Array(n, tp) => tp.layout(type_map).repeat(*n),
         }
     }
 }

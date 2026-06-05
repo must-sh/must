@@ -12,7 +12,7 @@ pub struct VM<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub enum Value {
-    Int(i32),
+    Int(i64),
     Bool(bool),
     Ref(usize),
 }
@@ -36,10 +36,23 @@ impl<'a> VM<'a> {
         };
 
         let bp = self.sp;
-        self.sp += f.variables;
+        self.sp += f.variables.iter().sum::<u32>() as usize;
         if self.sp >= 4096 {
             return panic!();
         }
+
+        let local_offsets: Vec<u32> = f
+            .variables
+            .iter()
+            .scan(0, |offset, size| {
+                let res = Some(*offset);
+                *offset += size;
+                res
+            })
+            .collect();
+
+        let get_local_addr =
+            |id: &usize, offset: &i32| bp + local_offsets[*id] as usize + *offset as usize;
 
         let mut current_block = 0;
         loop {
@@ -63,7 +76,7 @@ impl<'a> VM<'a> {
                             (Ge, Int(y), Int(x)) => Bool(x >= y),
                             (And, Bool(y), Bool(x)) => Bool(x && y),
                             (Or, Bool(y), Bool(x)) => Bool(x || y),
-                            x => panic!("{:#?}\n stack:\n{:#?}", x, &self.memory[0..self.sp]),
+                            x => panic!("{:#?}\n stack:\n{:#?}", x, &self.vstack[..]),
                         };
                         self.vstack.push(res)
                     }
@@ -77,40 +90,34 @@ impl<'a> VM<'a> {
                         };
                         self.vstack.push(res)
                     }
-                    Inst::Set { id, size } => {
-                        for i in (0..*size).rev() {
-                            let val = self.vstack.pop()?;
-                            self.memory[bp + *id + i] = val;
-                        }
+                    Inst::Set { id, offset, tp } => {
+                        let ptr = get_local_addr(id, offset);
+                        let val = self.vstack.pop()?;
+                        self.memory[ptr] = val;
                     }
-                    Inst::Get { id, size } => {
-                        for i in 0..*size {
-                            let val = self.memory[bp + *id + i];
+                    Inst::Get { id, offset, tp } => {
+                        let ptr = get_local_addr(id, offset);
+                        let val = self.memory[ptr];
+                        self.vstack.push(val);
+                    }
+                    Inst::Call(name) => self.eval_func(name)?,
+                    Inst::LocalAddr { id, offset } => {
+                        let ptr = Value::Ref(get_local_addr(id, offset));
+                        self.vstack.push(ptr)
+                    }
+                    Inst::Load { offset, tp } => {
+                        if let Value::Ref(ptr) = self.vstack.pop()? {
+                            let val = self.memory[ptr + *offset as usize];
                             self.vstack.push(val);
                         }
                     }
-                    Inst::Call(name) => self.eval_func(name)?,
-                    Inst::LocalAddr(n) => {
-                        let ptr = Value::Ref(bp + *n);
-                        self.vstack.push(ptr)
-                    }
-                    Inst::Load { offset, size } => {
+                    Inst::Store { offset, tp } => {
                         if let Value::Ref(ptr) = self.vstack.pop()? {
-                            for i in 0..*size {
-                                let val = self.memory[ptr + offset + i];
-                                self.vstack.push(val);
-                            }
+                            let val = self.vstack.pop()?;
+                            self.memory[ptr + *offset as usize] = val;
                         }
                     }
-                    Inst::Store { offset, size } => {
-                        if let Value::Ref(ptr) = self.vstack.pop()? {
-                            for i in (0..*size).rev() {
-                                let val = self.vstack.pop()?;
-                                self.memory[ptr + offset + i] = val;
-                            }
-                        }
-                    }
-                    Inst::Drop => {
+                    Inst::Drop(tp) => {
                         self.vstack.pop()?;
                     }
                     Inst::PushBool(b) => self.vstack.push(Value::Bool(*b)),
@@ -122,6 +129,16 @@ impl<'a> VM<'a> {
                             }
                             _ => panic!(),
                         }
+                    }
+                    Inst::MemCopy { size } => match (self.vstack.pop()?, self.vstack.pop()?) {
+                        (Value::Ref(src), Value::Ref(dest)) => {
+                            self.memory.copy_within(src..(src + *size as usize), dest);
+                        }
+                        _ => panic!(),
+                    },
+                    Inst::Dup => {
+                        let v = self.vstack.last().unwrap();
+                        self.vstack.push(*v);
                     }
                 }
             }
@@ -143,32 +160,31 @@ impl<'a> VM<'a> {
 
     fn call_intrinsic(&mut self, name: &str) -> Option<()> {
         match name {
-            "read" => {
+            "must_read" => {
                 let mut buf = String::new();
                 stdin().read_line(&mut buf).expect("failed to get input");
                 let val = buf
                     .trim()
-                    .parse::<i32>()
+                    .parse::<i64>()
                     .expect("this is not a valid integer");
                 self.vstack.push(Value::Int(val));
                 Some(())
             }
-            "print" => {
+            "must_print" => {
                 let val = self.vstack.pop()?;
                 println!("{val:?}");
                 Some(())
             }
-            "malloc" => {
-                if let Value::Int(n) = self.vstack.pop()? {
+            "must_alloc" => match self.vstack.pop()? {
+                Value::Int(n) => {
                     let ptr = self.hp;
                     self.hp += n as usize;
                     self.vstack.push(Value::Ref(ptr));
                     self.vstack.push(Value::Int(n));
                     Some(())
-                } else {
-                    panic!()
                 }
-            }
+                x => panic!("{:?}", x),
+            },
             _ => panic!("unknown intrinsic: {name}"),
         }
     }

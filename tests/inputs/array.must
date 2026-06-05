@@ -1,5 +1,5 @@
 
-extern fn print(x: int);
+extern fn must_print(x: int);
 
 fn make_arr() -> [3]int {
     [1, 2, 3]
@@ -17,5 +17,5 @@ fn main() {
     let mut arr = make_arr() in
     arr[0] = 13;
     modify(&arr);
-    print(arr_sum(arr))
+    must_print(arr_sum(arr))
 }

@@ -1,12 +1,12 @@
 
-extern fn print(x: int);
+extern fn must_print(x: int);
 
 fn main() {
     let triple = (1, 2, 3) in
     let (x, _, y) = triple in
     let res = y + x in
     foo();
-    print(res)
+    must_print(res)
 }
 
 fn foo() {

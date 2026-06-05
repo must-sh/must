@@ -42,33 +42,27 @@ pub fn type_check_func<'db>(db: &'db dyn Database, func: FnDef<'db>) -> Inferenc
     env.finish()
 }
 
-#[salsa::tracked]
 pub fn compile<'db>(db: &'db dyn Database, sf: Source) -> bytecode::Prog {
     let ast = input::parse_file(db, sf);
-    let mut compiled_functions: HashMap<String, bytecode::Func> = HashMap::new();
-    let defs = resolve::get_defs(db, sf);
+    let mut funcs: HashMap<String, bytecode::Func> = HashMap::new();
+    let mut externs: HashMap<String, bytecode::FuncSig> = HashMap::new();
 
     for def in ast.defs(db) {
         match def {
             ast::Def::Fn(func) => {
-                if let Some(body) = func.body(db) {
-                    let type_map = type_check_func(db, func).type_map;
-                    let mut builder = lowerer::Builder::new(db, &type_map, &defs.type_map);
-                    for (arg, tp) in func.args(db) {
-                        let tp = parse_type_expr(db, tp);
-                        builder.lower_pat(arg, &tp);
+                let name = func.name(db).text(db).clone();
+                match lowerer::Builder::new(db, func).compile() {
+                    lowerer::LoweringResult::Function(compiled_func) => {
+                        funcs.insert(name, compiled_func);
                     }
-                    builder.lower(body);
-
-                    let compiled_func = builder.finish();
-                    compiled_functions.insert(func.name(db).text(db).clone(), compiled_func);
+                    lowerer::LoweringResult::Extern(sig) => {
+                        externs.insert(name, sig);
+                    }
                 }
             }
             ast::Def::Struct(_) => (),
         }
     }
 
-    bytecode::Prog {
-        funcs: compiled_functions,
-    }
+    bytecode::Prog { funcs, externs }
 }
