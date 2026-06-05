@@ -1,11 +1,11 @@
 use std::{collections::HashMap, io::stdin};
 
-use crate::bytecode::{Func, Inst, Terminator};
+use crate::bytecode::{self, Func, Inst, Terminator};
 
 pub struct VM<'a> {
     funcs: &'a HashMap<String, Func>,
     vstack: Vec<Value>,
-    memory: [Value; 8192],
+    memory: [u8; 1024 * 1024],
     sp: usize,
     hp: usize,
 }
@@ -17,13 +17,33 @@ pub enum Value {
     Ref(usize),
 }
 
+impl Value {
+    fn as_bytes(self) -> Vec<u8> {
+        match self {
+            Value::Int(n) => n.to_le_bytes().to_vec(),
+            Value::Bool(b) => vec![b as u8],
+            Value::Ref(n) => n.to_le_bytes().to_vec(),
+        }
+    }
+
+    fn from_bytes(bytes: &[u8], tp: &bytecode::Type) -> Self {
+        let (b, _) = bytes.split_at(tp.get_size() as usize);
+        match tp {
+            bytecode::Type::Int => Value::Int(i64::from_le_bytes(b.try_into().unwrap())),
+            bytecode::Type::Bool => Value::Bool(b[0] != 0),
+            bytecode::Type::Ref => Value::Ref(usize::from_le_bytes(b.try_into().unwrap())),
+            bytecode::Type::SRet => todo!(),
+        }
+    }
+}
+
 impl<'a> VM<'a> {
     pub fn new(funcs: &'a HashMap<String, Func>) -> Self {
         let vstack = vec![];
         Self {
             funcs,
             vstack,
-            memory: [Value::Int(0); 8192],
+            memory: [0; 1024 * 1024],
             sp: 0,
             hp: 4096,
         }
@@ -38,7 +58,7 @@ impl<'a> VM<'a> {
         let bp = self.sp;
         self.sp += f.variables.iter().sum::<u32>() as usize;
         if self.sp >= 4096 {
-            return panic!();
+            panic!();
         }
 
         let local_offsets: Vec<u32> = f
@@ -90,14 +110,17 @@ impl<'a> VM<'a> {
                         };
                         self.vstack.push(res)
                     }
-                    Inst::Set { id, offset, tp } => {
-                        let ptr = get_local_addr(id, offset);
+                    Inst::Set { id, offset } => {
+                        let mut ptr = get_local_addr(id, offset);
                         let val = self.vstack.pop()?;
-                        self.memory[ptr] = val;
+                        for b in val.as_bytes() {
+                            self.memory[ptr] = b;
+                            ptr += 1;
+                        }
                     }
                     Inst::Get { id, offset, tp } => {
                         let ptr = get_local_addr(id, offset);
-                        let val = self.memory[ptr];
+                        let val = Value::from_bytes(&self.memory[ptr..], tp);
                         self.vstack.push(val);
                     }
                     Inst::Call(name) => self.eval_func(name)?,
@@ -107,17 +130,21 @@ impl<'a> VM<'a> {
                     }
                     Inst::Load { offset, tp } => {
                         if let Value::Ref(ptr) = self.vstack.pop()? {
-                            let val = self.memory[ptr + *offset as usize];
+                            let val =
+                                Value::from_bytes(&self.memory[(ptr + *offset as usize)..], tp);
                             self.vstack.push(val);
                         }
                     }
-                    Inst::Store { offset, tp } => {
-                        if let Value::Ref(ptr) = self.vstack.pop()? {
+                    Inst::Store { offset } => {
+                        if let Value::Ref(mut ptr) = self.vstack.pop()? {
                             let val = self.vstack.pop()?;
-                            self.memory[ptr + *offset as usize] = val;
+                            for b in val.as_bytes() {
+                                self.memory[ptr + *offset as usize] = b;
+                                ptr += 1;
+                            }
                         }
                     }
-                    Inst::Drop(tp) => {
+                    Inst::Drop => {
                         self.vstack.pop()?;
                     }
                     Inst::PushBool(b) => self.vstack.push(Value::Bool(*b)),

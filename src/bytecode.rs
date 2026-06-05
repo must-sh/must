@@ -1,10 +1,8 @@
 use std::{collections::HashMap, fmt::Display};
 
-use crate::{
-    common::{Binop, Unop},
-    tp::FnSig,
-};
+use crate::common::{Binop, Unop};
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Inst {
     PushInt(i64),
@@ -12,13 +10,13 @@ pub enum Inst {
     Binop(Binop),
     Unop(Unop),
 
-    Set { id: usize, offset: i32, tp: Type },
+    Set { id: usize, offset: i32 },
     Get { id: usize, offset: i32, tp: Type },
     LocalAddr { id: usize, offset: i32 },
 
     // PTR ON TOP, VALUE SECOND
     Load { offset: i32, tp: Type },
-    Store { offset: i32, tp: Type },
+    Store { offset: i32 },
 
     // SRC ON TOP, DST SECOND
     MemCopy { size: u64 },
@@ -26,7 +24,7 @@ pub enum Inst {
     // REF, INT -> REF + INT
     CapOffset,
 
-    Drop(Type),
+    Drop,
     Dup,
 
     Call(String),
@@ -39,13 +37,13 @@ impl Display for Inst {
             Inst::PushBool(b) => write!(f, "push {b}"),
             Inst::Binop(op) => write!(f, "{op}"),
             Inst::Unop(op) => write!(f, "{op}"),
-            Inst::Set { id, offset, tp } => write!(f, "set ${id} +{offset} {:?}", tp),
+            Inst::Set { id, offset } => write!(f, "set ${id} +{offset}"),
             Inst::Get { id, offset, tp } => write!(f, "get ${id} +{offset} {:?}", tp),
             Inst::LocalAddr { id, offset } => write!(f, "addr ${id} +{offset}"),
-            Inst::Load { offset, tp } => write!(f, "load +{offset}"),
-            Inst::Store { offset, tp } => write!(f, "store +{offset}"),
+            Inst::Load { offset, tp } => write!(f, "load +{offset} {:?}", tp),
+            Inst::Store { offset } => write!(f, "store +{offset}"),
             Inst::CapOffset => write!(f, "capoffset"),
-            Inst::Drop(tp) => write!(f, "drop"),
+            Inst::Drop => write!(f, "drop"),
             Inst::Dup => write!(f, "dup"),
             Inst::Call(name) => write!(f, "call {name:?}"),
             Inst::MemCopy { size } => write!(f, "memcpy {size}"),
@@ -101,6 +99,7 @@ pub struct Func {
     pub sig: FuncSig,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 pub enum Type {
     Int,

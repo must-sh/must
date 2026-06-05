@@ -2,14 +2,7 @@ use std::collections::HashMap;
 
 use salsa::Database;
 
-use crate::{
-    ast::{self, FnDef},
-    bytecode,
-    input::{self, Source},
-    lowerer,
-    resolve::{self, parse_type_expr},
-    tp::{self, InferenceResult},
-};
+use crate::{ast, bytecode, input, lowerer, resolve, tp};
 
 #[salsa::tracked]
 pub fn type_check_file(db: &dyn Database, sf: input::Source) {
@@ -26,7 +19,10 @@ pub fn type_check_file(db: &dyn Database, sf: input::Source) {
 }
 
 #[salsa::tracked]
-pub fn type_check_func<'db>(db: &'db dyn Database, func: FnDef<'db>) -> InferenceResult<'db> {
+pub fn type_check_func<'db>(
+    db: &'db dyn Database,
+    func: ast::FnDef<'db>,
+) -> tp::InferenceResult<'db> {
     let defs = resolve::get_defs(db, func.sf(db));
     let mut env: tp::Env = tp::Env::new(db, defs);
     for (arg, tp) in func.args(db) {
@@ -42,7 +38,7 @@ pub fn type_check_func<'db>(db: &'db dyn Database, func: FnDef<'db>) -> Inferenc
     env.finish()
 }
 
-pub fn compile<'db>(db: &'db dyn Database, sf: Source) -> bytecode::Prog {
+pub fn compile<'db>(db: &'db dyn Database, sf: input::Source) -> bytecode::Prog {
     let ast = input::parse_file(db, sf);
     let mut funcs: HashMap<String, bytecode::Func> = HashMap::new();
     let mut externs: HashMap<String, bytecode::FuncSig> = HashMap::new();

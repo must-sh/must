@@ -25,7 +25,7 @@ impl bytecode::Type {
     }
 }
 
-pub fn compile(prog: bytecode::Prog) -> ObjectProduct {
+pub fn compile(prog: bytecode::Prog, print: bool) -> ObjectProduct {
     let mut settings_builder = settings::builder();
     settings_builder.set("opt_level", "speed").unwrap();
     let flags = settings::Flags::new(settings_builder);
@@ -43,7 +43,7 @@ pub fn compile(prog: bytecode::Prog) -> ObjectProduct {
 
     let module = ObjectModule::new(module_builder);
 
-    let mut lowerer = Lowerer::new(module);
+    let mut lowerer = Lowerer::new(module, print);
 
     for (name, f) in &prog.funcs {
         lowerer.declare_fn(name.clone(), &f.sig, Linkage::Export);
@@ -65,14 +65,16 @@ struct Lowerer {
     m: ObjectModule,
     fn_map: HashMap<String, FuncId>,
     fn_sigs: HashMap<FuncId, Signature>,
+    print: bool,
 }
 
 impl Lowerer {
-    fn new(m: ObjectModule) -> Self {
+    fn new(m: ObjectModule, print: bool) -> Self {
         Self {
             m,
             fn_map: HashMap::new(),
             fn_sigs: HashMap::new(),
+            print,
         }
     }
 
@@ -190,7 +192,7 @@ impl Lowerer {
                         };
                         stack.push(val)
                     }
-                    bytecode::Inst::Set { id, offset, tp } => {
+                    bytecode::Inst::Set { id, offset } => {
                         let ss = variable_map.get(&id).unwrap();
                         let val = stack.pop().unwrap();
                         b.ins().stack_store(val, *ss, offset);
@@ -212,7 +214,7 @@ impl Lowerer {
                             .load(tp.as_cranelift_tp(), MemFlags::new(), ptr, offset);
                         stack.push(val);
                     }
-                    bytecode::Inst::Store { offset, tp } => {
+                    bytecode::Inst::Store { offset } => {
                         let ptr = stack.pop().unwrap();
                         let val = stack.pop().unwrap();
                         b.ins().store(MemFlags::new(), val, ptr, offset);
@@ -223,7 +225,7 @@ impl Lowerer {
                         let res = b.ins().iadd(ptr, val);
                         stack.push(res);
                     }
-                    bytecode::Inst::Drop(tp) => {
+                    bytecode::Inst::Drop => {
                         stack.pop().unwrap();
                     }
                     bytecode::Inst::Call(name) => {
@@ -289,9 +291,12 @@ impl Lowerer {
         b.seal_all_blocks();
         b.finalize();
 
-        println!("{:#?}", ctx.func);
+        self.m.define_function(func, &mut ctx).unwrap();
 
-        self.m.define_function(func, &mut ctx).unwrap()
+        if self.print {
+            println!("{:?}", name);
+            println!("{}", ctx.func);
+        }
     }
 
     fn get_func_id(&self, name: &str) -> FuncId {
