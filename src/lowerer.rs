@@ -80,7 +80,6 @@ impl<'a> Builder<'a> {
             }
             ExprData::Var(x) => {
                 let tp = self.type_map.get(&e).unwrap();
-                println!("{}, {:?}", x.text(self.db), tp);
                 let layout = tp.layout(&self.type_defs);
                 let id = self.get_var(x);
                 self.load_from_place(Place::Local { id, offset: 0 }, layout);
@@ -159,8 +158,8 @@ impl<'a> Builder<'a> {
                 self.lower(e1);
                 let tp = self.type_map.get(&e1).unwrap();
                 let layout = tp.layout(self.type_defs);
-                for tp in layout {
-                    self.push_inst(Inst::Drop(tp));
+                for _ in layout {
+                    self.push_inst(Inst::Drop);
                 }
                 self.lower(e2);
             }
@@ -237,11 +236,7 @@ impl<'a> Builder<'a> {
             }
             Place::Ref { offset } => {
                 let id = self.new_tmp_var(8);
-                self.push_inst(Inst::Set {
-                    id,
-                    offset: 0,
-                    tp: bytecode::Type::Ref,
-                });
+                self.push_inst(Inst::Set { id, offset: 0 });
                 let mut i = 0;
                 for tp in layout {
                     self.push_inst(Inst::Get {
@@ -269,17 +264,12 @@ impl<'a> Builder<'a> {
                     self.push_inst(Inst::Set {
                         id,
                         offset: offset + i,
-                        tp,
                     });
                 }
             }
             Place::Ref { offset } => {
                 let id = self.new_tmp_var(8);
-                self.push_inst(Inst::Set {
-                    id,
-                    offset: 0,
-                    tp: bytecode::Type::Ref,
-                });
+                self.push_inst(Inst::Set { id, offset: 0 });
                 for tp in layout.into_iter().rev() {
                     i -= tp.get_size();
                     self.push_inst(Inst::Get {
@@ -287,10 +277,7 @@ impl<'a> Builder<'a> {
                         offset: 0,
                         tp: bytecode::Type::Ref,
                     });
-                    self.push_inst(Inst::Store {
-                        offset: offset + i,
-                        tp,
-                    });
+                    self.push_inst(Inst::Store { offset: offset + i });
                 }
                 // self.push_inst(Inst::Drop(bytecode::Type::Ref));
             }
@@ -357,8 +344,8 @@ impl<'a> Builder<'a> {
                 self.lower(e1);
                 let tp = self.type_map.get(&e1).unwrap();
                 let layout = tp.layout(self.type_defs);
-                for tp in layout {
-                    self.push_inst(Inst::Drop(tp));
+                for _ in layout {
+                    self.push_inst(Inst::Drop);
                 }
                 self.lower_place(e2)
             }
@@ -394,7 +381,7 @@ impl<'a> Builder<'a> {
                 };
                 let offset = if matches!(e1_tp, Type::Slice(_, _)) {
                     self.lower(e1);
-                    self.push_inst(Inst::Drop(bytecode::Type::Int));
+                    self.push_inst(Inst::Drop);
                     0
                 } else {
                     match self.lower_place(e1) {
@@ -407,7 +394,7 @@ impl<'a> Builder<'a> {
                 };
                 self.lower(e2);
                 if matches!(tp, Type::Range) {
-                    self.push_inst(Inst::Drop(bytecode::Type::Int));
+                    self.push_inst(Inst::Drop);
                 }
                 self.push_inst(Inst::PushInt(elem_size as i64));
                 self.push_inst(Inst::Binop(Binop::Mul));
@@ -421,8 +408,8 @@ impl<'a> Builder<'a> {
         match pat.data(self.db) {
             PatternData::Wildcard => {
                 let layout = tp.layout(self.type_defs);
-                for tp in layout {
-                    self.push_inst(Inst::Drop(tp));
+                for _ in layout {
+                    self.push_inst(Inst::Drop);
                 }
             }
             PatternData::Var(name, _) => {
@@ -432,7 +419,7 @@ impl<'a> Builder<'a> {
                 let mut offset = size;
                 for tp in layout.into_iter().rev() {
                     offset -= tp.get_size();
-                    self.push_inst(Inst::Set { id, offset, tp });
+                    self.push_inst(Inst::Set { id, offset });
                 }
             }
             PatternData::Tuple(pats) => {
