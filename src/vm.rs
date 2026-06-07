@@ -27,12 +27,11 @@ impl Value {
     }
 
     fn from_bytes(bytes: &[u8], tp: &bytecode::Type) -> Self {
-        let (b, _) = bytes.split_at(tp.get_size() as usize);
+        let (b, _) = bytes.split_at(tp.size() as usize);
         match tp {
-            bytecode::Type::Int => Value::Int(i64::from_le_bytes(b.try_into().unwrap())),
+            bytecode::Type::Int64 => Value::Int(i64::from_le_bytes(b.try_into().unwrap())),
             bytecode::Type::Bool => Value::Bool(b[0] != 0),
-            bytecode::Type::Ref => Value::Ref(usize::from_le_bytes(b.try_into().unwrap())),
-            bytecode::Type::SRet => todo!(),
+            bytecode::Type::Ptr => Value::Ref(usize::from_le_bytes(b.try_into().unwrap())),
         }
     }
 }
@@ -72,7 +71,7 @@ impl<'a> VM<'a> {
             .collect();
 
         let get_local_addr =
-            |id: &usize, offset: &i32| bp + local_offsets[*id] as usize + *offset as usize;
+            |id: &usize, offset: &u32| bp + local_offsets[*id] as usize + *offset as usize;
 
         let mut current_block = 0;
         loop {

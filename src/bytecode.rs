@@ -10,13 +10,13 @@ pub enum Inst {
     Binop(Binop),
     Unop(Unop),
 
-    Set { id: usize, offset: i32 },
-    Get { id: usize, offset: i32, tp: Type },
-    LocalAddr { id: usize, offset: i32 },
+    Set { id: usize, offset: u32 },
+    Get { id: usize, offset: u32, tp: Type },
+    LocalAddr { id: usize, offset: u32 },
 
     // PTR ON TOP, VALUE SECOND
-    Load { offset: i32, tp: Type },
-    Store { offset: i32 },
+    Load { offset: u32, tp: Type },
+    Store { offset: u32 },
 
     // SRC ON TOP, DST SECOND
     MemCopy { size: u64 },
@@ -102,27 +102,145 @@ pub struct Func {
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 pub enum Type {
-    Int,
+    Int64,
     Bool,
-    Ref,
-    SRet,
+    Ptr,
 }
 
 impl Type {
-    pub fn get_size(&self) -> i32 {
+    pub fn as_layout(self) -> Layout {
+        todo!()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Layout {
+    pub size: usize,
+    pub align: u32,
+    pub fields: Fields,
+}
+
+#[derive(Debug, Clone)]
+pub enum Abi {
+    Unit,
+    Scalar(Type),
+    ScalarPair(Type, Type),
+    Struct,
+}
+
+#[derive(Debug, Clone)]
+pub enum Fields {
+    Primitive(Type),
+    Array { stride: Box<Layout>, count: usize },
+    Struct { fields: Vec<(u32, Layout)> },
+}
+
+impl Layout {
+    pub fn size(&self) -> usize {
+        self.size
+    }
+
+    pub fn align(&self) -> u32 {
+        self.align
+    }
+
+    pub fn int64() -> Self {
+        Self {
+            size: 8,
+            align: 8,
+            fields: Fields::Primitive(Type::Int64),
+        }
+    }
+
+    pub fn bool() -> Self {
+        Self {
+            size: 1,
+            align: 1,
+            fields: Fields::Primitive(Type::Bool),
+        }
+    }
+
+    pub fn ptr() -> Self {
+        Self {
+            size: 8,
+            align: 8,
+            fields: Fields::Primitive(Type::Ptr),
+        }
+    }
+
+    pub fn strct(tps: &[Layout]) -> Self {
+        let fields = tps
+            .iter()
+            .scan(0, |off, tp| {
+                let res = Some((*off, tp.clone()));
+                *off += tp.size() as u32;
+                res
+            })
+            .collect();
+        Self {
+            size: tps.iter().map(|lt| lt.size()).sum(),
+            align: tps.iter().map(|lt| lt.align()).max().unwrap_or(0),
+            fields: Fields::Struct { fields },
+        }
+    }
+
+    pub fn array(size: usize, lt: Layout) -> Self {
+        Self {
+            size: lt.size * size,
+            align: lt.align,
+            fields: Fields::Array {
+                stride: Box::new(lt),
+                count: size,
+            },
+        }
+    }
+
+    pub fn abi(&self) -> Abi {
+        match &self.fields {
+            Fields::Primitive(tp) => Abi::Scalar(*tp),
+            Fields::Array { stride, count } => Abi::Struct,
+            Fields::Struct { fields } => match self.primitives()[..] {
+                [] => Abi::Unit,
+                [tp] => Abi::Scalar(tp),
+                [tp1, tp2] => Abi::ScalarPair(tp1, tp2),
+                _ => Abi::Struct,
+            },
+        }
+    }
+
+    pub fn primitives(&self) -> Vec<Type> {
+        match &self.fields {
+            Fields::Primitive(tp) => vec![*tp],
+            Fields::Array { stride, count } => stride.primitives().repeat(*count),
+            Fields::Struct { fields } => {
+                fields.iter().flat_map(|(_, lt)| lt.primitives()).collect()
+            }
+        }
+    }
+}
+
+impl Type {
+    pub fn size(&self) -> u32 {
         match self {
-            Type::Int => 8,
+            Type::Int64 => 8,
             Type::Bool => 1,
-            Type::Ref => 8,
-            Type::SRet => 8,
+            Type::Ptr => 8,
+        }
+    }
+
+    pub fn align(&self) -> u32 {
+        match self {
+            Type::Int64 => 8,
+            Type::Bool => 1,
+            Type::Ptr => 8,
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct FuncSig {
-    pub args: Vec<Type>,
-    pub rets: Vec<Type>,
+    pub args: Vec<Layout>,
+    pub rets: Vec<Layout>,
 }
 
 impl Display for Func {

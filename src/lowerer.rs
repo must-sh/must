@@ -12,15 +12,15 @@ use crate::{
 };
 
 pub enum Place {
-    Local { id: usize, offset: i32 },
-    Ref { offset: i32 },
+    Local { id: usize, offset: u32 },
+    Ref { offset: u32 },
 }
 
 impl Place {
-    pub fn add_offset(self, x: i32) -> Self {
+    pub fn add_offset(&self, x: u32) -> Self {
         match self {
             Place::Local { id, offset } => Place::Local {
-                id,
+                id: *id,
                 offset: offset + x,
             },
             Place::Ref { offset } => Place::Ref { offset: offset + x },
@@ -82,7 +82,7 @@ impl<'a> Builder<'a> {
                 let tp = self.type_map.get(&e).unwrap();
                 let layout = tp.layout(&self.type_defs);
                 let id = self.get_var(x);
-                self.load_from_place(Place::Local { id, offset: 0 }, layout);
+                self.load_from_place(Place::Local { id, offset: 0 }, &layout);
             }
             ExprData::FnCall(name, args) => {
                 for arg in args.into_iter().rev() {
@@ -133,13 +133,13 @@ impl<'a> Builder<'a> {
                 let layout = tp.layout(&self.type_defs);
                 self.lower(e2);
                 let place = self.lower_place(e1);
-                self.store_to_place(place, layout);
+                self.store_to_place(place, &layout);
             }
             ExprData::Deref(expr) => {
                 let tp = self.type_map.get(&e).unwrap();
                 let layout = tp.layout(self.type_defs);
                 self.lower(expr);
-                self.load_from_place(Place::Ref { offset: 0 }, layout);
+                self.load_from_place(Place::Ref { offset: 0 }, &layout);
             }
             ExprData::AddressOf(e) => match self.lower_place(e) {
                 Place::Local { id, offset } => self.push_inst(Inst::LocalAddr { id, offset }),
@@ -158,7 +158,7 @@ impl<'a> Builder<'a> {
                 self.lower(e1);
                 let tp = self.type_map.get(&e1).unwrap();
                 let layout = tp.layout(self.type_defs);
-                for _ in layout {
+                for _ in 0..layout.primitives().len() {
                     self.push_inst(Inst::Drop);
                 }
                 self.lower(e2);
@@ -182,7 +182,7 @@ impl<'a> Builder<'a> {
                 let tp_field = self.type_map.get(&e).unwrap();
                 let layout = tp_field.layout(&self.type_defs);
                 let place = self.lower_place(expr);
-                self.load_from_place(place.add_offset(offset), layout);
+                self.load_from_place(place.add_offset(offset), &layout);
             }
             ExprData::Array(exprs) => {
                 for e in exprs {
@@ -195,7 +195,7 @@ impl<'a> Builder<'a> {
                 match self.type_map.get(&e2).unwrap() {
                     Type::Int => {
                         let place = self.lower_place(e);
-                        self.load_from_place(place, layout);
+                        self.load_from_place(place, &layout);
                     }
                     Type::Range => {
                         self.lower_place(e);
@@ -221,70 +221,113 @@ impl<'a> Builder<'a> {
         }
     }
 
-    pub fn load_from_place(&mut self, place: Place, layout: Vec<bytecode::Type>) {
+    pub fn load_from_place(&mut self, place: Place, layout: &bytecode::Layout) {
         match place {
-            Place::Local { id, offset } => {
-                let mut i = 0;
-                for tp in layout {
+            Place::Local { id, offset } => match &layout.fields {
+                bytecode::Fields::Primitive(tp) => {
                     self.push_inst(Inst::Get {
                         id,
-                        offset: offset + i,
-                        tp,
+                        offset,
+                        tp: *tp,
                     });
-                    i += tp.get_size();
                 }
-            }
-            Place::Ref { offset } => {
-                let id = self.new_tmp_var(8);
-                self.push_inst(Inst::Set { id, offset: 0 });
-                let mut i = 0;
-                for tp in layout {
-                    self.push_inst(Inst::Get {
-                        id,
-                        offset: 0,
-                        tp: bytecode::Type::Ref,
-                    });
-                    self.push_inst(Inst::Load {
-                        offset: offset + i,
-                        tp,
-                    });
-                    i += tp.get_size();
+                bytecode::Fields::Array { stride, count } => {
+                    for i in 0..*count {
+                        let offset = stride.size();
+                        self.load_from_place(place.add_offset((i * offset) as u32), &stride);
+                    }
                 }
-            }
+                bytecode::Fields::Struct { fields } => {
+                    for (off, layout) in fields {
+                        self.load_from_place(place.add_offset(*off), layout);
+                    }
+                }
+            },
+            Place::Ref { offset } => match &layout.fields {
+                bytecode::Fields::Primitive(tp) => {
+                    self.push_inst(Inst::Load { offset, tp: *tp });
+                }
+                bytecode::Fields::Array { stride, count } => {
+                    let id = self.new_tmp_var(8);
+                    self.push_inst(Inst::Set { id, offset: 0 });
+                    for i in 0..*count {
+                        let offset = stride.size();
+                        self.push_inst(Inst::Get {
+                            id,
+                            offset: 0,
+                            tp: bytecode::Type::Ptr,
+                        });
+                        self.load_from_place(place.add_offset((i * offset) as u32), &stride);
+                    }
+                }
+                bytecode::Fields::Struct { fields } => {
+                    let id = self.new_tmp_var(8);
+                    self.push_inst(Inst::Set { id, offset: 0 });
+                    for (off, layout) in fields {
+                        self.push_inst(Inst::Get {
+                            id,
+                            offset: 0,
+                            tp: bytecode::Type::Ptr,
+                        });
+                        self.load_from_place(place.add_offset(*off), layout);
+                    }
+                }
+            },
         }
     }
 
-    pub fn store_to_place(&mut self, place: Place, layout: Vec<bytecode::Type>) {
-        let size: i32 = layout.iter().map(|tp| tp.get_size()).sum();
-        let mut i = size;
+    pub fn store_to_place(&mut self, place: Place, layout: &bytecode::Layout) {
         match place {
-            Place::Local { id, offset } => {
-                for tp in layout.into_iter().rev() {
-                    i -= tp.get_size();
-                    self.push_inst(Inst::Set {
-                        id,
-                        offset: offset + i,
-                    });
+            Place::Local { id, offset } => match &layout.fields {
+                bytecode::Fields::Primitive(_) => {
+                    self.push_inst(Inst::Set { id, offset });
                 }
-            }
-            Place::Ref { offset } => {
-                let id = self.new_tmp_var(8);
-                self.push_inst(Inst::Set { id, offset: 0 });
-                for tp in layout.into_iter().rev() {
-                    i -= tp.get_size();
-                    self.push_inst(Inst::Get {
-                        id,
-                        offset: 0,
-                        tp: bytecode::Type::Ref,
-                    });
-                    self.push_inst(Inst::Store { offset: offset + i });
+                bytecode::Fields::Array { stride, count } => {
+                    let offset = stride.size();
+                    for i in (0..*count).rev() {
+                        self.store_to_place(place.add_offset((i * offset) as u32), &stride);
+                    }
                 }
-                // self.push_inst(Inst::Drop(bytecode::Type::Ref));
-            }
+                bytecode::Fields::Struct { fields } => {
+                    for (off, layout) in fields.iter().rev() {
+                        self.store_to_place(place.add_offset(*off), layout);
+                    }
+                }
+            },
+            Place::Ref { offset } => match &layout.fields {
+                bytecode::Fields::Primitive(_) => {
+                    self.push_inst(Inst::Store { offset });
+                }
+                bytecode::Fields::Array { stride, count } => {
+                    let id = self.new_tmp_var(8);
+                    self.push_inst(Inst::Set { id, offset: 0 });
+                    for i in (0..*count).rev() {
+                        let offset = stride.size();
+                        self.push_inst(Inst::Get {
+                            id,
+                            offset: 0,
+                            tp: bytecode::Type::Ptr,
+                        });
+                        self.store_to_place(place.add_offset((i * offset) as u32), &stride);
+                    }
+                }
+                bytecode::Fields::Struct { fields } => {
+                    let id = self.new_tmp_var(8);
+                    self.push_inst(Inst::Set { id, offset: 0 });
+                    for (off, layout) in fields.iter().rev() {
+                        self.push_inst(Inst::Get {
+                            id,
+                            offset: 0,
+                            tp: bytecode::Type::Ptr,
+                        });
+                        self.store_to_place(place.add_offset(*off), layout);
+                    }
+                }
+            },
         }
     }
 
-    pub fn get_offset(&mut self, tp: &Type, field_name: Ident<'_>) -> i32 {
+    pub fn get_offset(&mut self, tp: &Type, field_name: Ident<'_>) -> u32 {
         match tp {
             Type::Error
             | Type::Int
@@ -344,7 +387,7 @@ impl<'a> Builder<'a> {
                 self.lower(e1);
                 let tp = self.type_map.get(&e1).unwrap();
                 let layout = tp.layout(self.type_defs);
-                for _ in layout {
+                for _ in 0..layout.primitives().len() {
                     self.push_inst(Inst::Drop);
                 }
                 self.lower_place(e2)
@@ -408,7 +451,7 @@ impl<'a> Builder<'a> {
         match pat.data(self.db) {
             PatternData::Wildcard => {
                 let layout = tp.layout(self.type_defs);
-                for _ in layout {
+                for _ in 0..layout.primitives().len() {
                     self.push_inst(Inst::Drop);
                 }
             }
@@ -416,11 +459,7 @@ impl<'a> Builder<'a> {
                 let size = tp.get_size(self.type_defs);
                 let layout = tp.layout(self.type_defs);
                 let id = self.new_var(name, size as u32);
-                let mut offset = size;
-                for tp in layout.into_iter().rev() {
-                    offset -= tp.get_size();
-                    self.push_inst(Inst::Set { id, offset });
-                }
+                self.store_to_place(Place::Local { id, offset: 0 }, &layout);
             }
             PatternData::Tuple(pats) => {
                 if let Type::Tuple(tps) = tp {
@@ -450,13 +489,13 @@ impl<'a> Builder<'a> {
         for (arg, tp) in self.func.args(self.db) {
             let tp = parse_type_expr(self.db, tp);
             let layout = tp.layout(self.type_defs);
-            args.extend(layout);
+            args.push(layout);
             self.lower_pat(arg, &tp); // if its extern, we can lower but whatever, they will be freed anyways
         }
         if let Some(tp) = self.func.ret(self.db) {
             let tp = parse_type_expr(self.db, tp);
             let layout = tp.layout(self.type_defs);
-            rets.extend(layout);
+            rets.push(layout);
         }
         let sig = FuncSig { args, rets };
         let res = if let Some(body) = self.func.body(self.db) {
