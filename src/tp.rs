@@ -69,7 +69,7 @@ impl Type {
         }
     }
 
-    pub fn get_size<'db>(&self, type_map: &HashMap<usize, TypeInfo<'db>>) -> i32 {
+    pub fn get_size<'db>(&self, type_map: &HashMap<usize, TypeInfo<'db>>) -> u32 {
         match self {
             Type::Error => panic!(),
             Type::Int => 8,
@@ -84,20 +84,29 @@ impl Type {
                     .map(|(_, tp)| tp.1.get_size(type_map))
                     .sum()
             }
-            Type::Array(n, tp) => *n as i32 * tp.get_size(type_map),
+            Type::Array(n, tp) => *n as u32 * tp.get_size(type_map),
         }
     }
 
-    pub(crate) fn layout(&self, type_map: &HashMap<usize, TypeInfo>) -> Vec<bytecode::Type> {
+    pub(crate) fn layout(&self, type_map: &HashMap<usize, TypeInfo>) -> bytecode::Layout {
         match self {
             Type::Error => panic!(),
-            Type::Int => vec![bytecode::Type::Int],
-            Type::Bool => vec![bytecode::Type::Bool],
-            Type::Range => vec![bytecode::Type::Int, bytecode::Type::Int],
-            Type::Fn(_) => vec![bytecode::Type::Ref],
-            Type::Ptr(_, _) => vec![bytecode::Type::Ref],
-            Type::Slice(_, _) => vec![bytecode::Type::Ref, bytecode::Type::Int],
-            Type::Tuple(items) => items.iter().flat_map(|tp| tp.layout(type_map)).collect(),
+            Type::Int => bytecode::Layout::int64(),
+            Type::Bool => bytecode::Layout::bool(),
+            Type::Range => {
+                bytecode::Layout::strct(&[bytecode::Layout::int64(), bytecode::Layout::int64()])
+            }
+            Type::Fn(_) => bytecode::Layout::ptr(),
+            Type::Ptr(_, _) => bytecode::Layout::ptr(),
+            Type::Slice(_, _) => {
+                bytecode::Layout::strct(&[bytecode::Layout::ptr(), bytecode::Layout::int64()])
+            }
+            Type::Tuple(items) => bytecode::Layout::strct(
+                &items
+                    .iter()
+                    .map(|tp| tp.layout(type_map))
+                    .collect::<Vec<_>>()[..],
+            ),
             Type::Var(id) => {
                 let info = type_map.get(&id).unwrap();
                 let mut fields = info
@@ -106,12 +115,14 @@ impl Type {
                     .map(|(_, (id, tp))| (id, tp))
                     .collect::<Vec<_>>();
                 fields.sort_by_key(|(id, _)| **id);
-                fields
-                    .iter()
-                    .flat_map(|(_, tp)| tp.layout(type_map))
-                    .collect()
+                bytecode::Layout::strct(
+                    &fields
+                        .iter()
+                        .map(|(_, tp)| tp.layout(type_map))
+                        .collect::<Vec<_>>()[..],
+                )
             }
-            Type::Array(n, tp) => tp.layout(type_map).repeat(*n),
+            Type::Array(n, tp) => bytecode::Layout::array(*n, tp.layout(type_map)),
         }
     }
 }

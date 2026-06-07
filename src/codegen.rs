@@ -17,10 +17,9 @@ use crate::bytecode;
 impl bytecode::Type {
     pub fn as_cranelift_tp(self) -> ir::Type {
         match self {
-            bytecode::Type::Int => types::I64,
+            bytecode::Type::Int64 => types::I64,
             bytecode::Type::Bool => types::I8,
-            bytecode::Type::Ref => types::I64,
-            bytecode::Type::SRet => types::I64,
+            bytecode::Type::Ptr => types::I64,
         }
     }
 }
@@ -84,25 +83,32 @@ impl Lowerer {
 
     fn declare_fn(&mut self, name: String, f: &bytecode::FuncSig, linkage: Linkage) {
         let mut sig = self.m.make_signature();
-        for arg in &f.args {
-            let param = match arg {
-                bytecode::Type::Int => AbiParam::new(types::I64),
-                bytecode::Type::Bool => AbiParam::new(types::I8),
-                bytecode::Type::Ref => AbiParam::new(types::I64),
-                bytecode::Type::SRet => {
-                    AbiParam::special(types::I64, ArgumentPurpose::StructReturn)
-                }
-            };
-            sig.params.push(param);
-        }
         for ret in &f.rets {
-            let param = match ret {
-                bytecode::Type::Int => AbiParam::new(types::I64),
-                bytecode::Type::Bool => AbiParam::new(types::I8),
-                bytecode::Type::Ref => AbiParam::new(types::I64),
-                bytecode::Type::SRet => panic!(),
+            match ret.abi() {
+                bytecode::Abi::Scalar(tp) => sig.returns.push(AbiParam::new(tp.as_cranelift_tp())),
+                bytecode::Abi::ScalarPair(tp1, tp2) => {
+                    sig.returns.push(AbiParam::new(tp1.as_cranelift_tp()));
+                    sig.returns.push(AbiParam::new(tp2.as_cranelift_tp()))
+                }
+                bytecode::Abi::Struct => sig.params.push(AbiParam::special(
+                    bytecode::Type::Ptr.as_cranelift_tp(),
+                    ArgumentPurpose::StructReturn,
+                )),
+                bytecode::Abi::Unit => (),
             };
-            sig.returns.push(param);
+        }
+        for arg in &f.args {
+            match arg.abi() {
+                bytecode::Abi::Scalar(tp) => sig.params.push(AbiParam::new(tp.as_cranelift_tp())),
+                bytecode::Abi::ScalarPair(tp1, tp2) => {
+                    sig.params.push(AbiParam::new(tp1.as_cranelift_tp()));
+                    sig.params.push(AbiParam::new(tp2.as_cranelift_tp()))
+                }
+                bytecode::Abi::Struct => sig
+                    .params
+                    .push(AbiParam::new(bytecode::Type::Ptr.as_cranelift_tp())),
+                bytecode::Abi::Unit => (),
+            };
         }
         let id = self.m.declare_function(&name, linkage, &sig).unwrap();
         self.fn_map.insert(name, id);
@@ -195,29 +201,29 @@ impl Lowerer {
                     bytecode::Inst::Set { id, offset } => {
                         let ss = variable_map.get(&id).unwrap();
                         let val = stack.pop().unwrap();
-                        b.ins().stack_store(val, *ss, offset);
+                        b.ins().stack_store(val, *ss, offset as i32);
                     }
                     bytecode::Inst::Get { id, offset, tp } => {
                         let ss = variable_map.get(&id).unwrap();
-                        let val = b.ins().stack_load(tp.as_cranelift_tp(), *ss, offset);
+                        let val = b.ins().stack_load(tp.as_cranelift_tp(), *ss, offset as i32);
                         stack.push(val);
                     }
                     bytecode::Inst::LocalAddr { id, offset } => {
                         let ss = variable_map.get(&id).unwrap();
-                        let v = b.ins().stack_addr(types::I64, *ss, offset);
+                        let v = b.ins().stack_addr(types::I64, *ss, offset as i32);
                         stack.push(v);
                     }
                     bytecode::Inst::Load { offset, tp } => {
                         let ptr = stack.pop().unwrap();
-                        let val = b
-                            .ins()
-                            .load(tp.as_cranelift_tp(), MemFlags::new(), ptr, offset);
+                        let val =
+                            b.ins()
+                                .load(tp.as_cranelift_tp(), MemFlags::new(), ptr, offset as i32);
                         stack.push(val);
                     }
                     bytecode::Inst::Store { offset } => {
                         let ptr = stack.pop().unwrap();
                         let val = stack.pop().unwrap();
-                        b.ins().store(MemFlags::new(), val, ptr, offset);
+                        b.ins().store(MemFlags::new(), val, ptr, offset as i32);
                     }
                     bytecode::Inst::CapOffset => {
                         let ptr = stack.pop().unwrap();
