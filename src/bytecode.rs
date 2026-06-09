@@ -19,7 +19,7 @@ pub enum Inst {
     Store { offset: u32 },
 
     // SRC ON TOP, DST SECOND
-    MemCopy { size: u64 },
+    MemCopy { size: usize },
 
     // REF, INT -> REF + INT
     CapOffset,
@@ -215,6 +215,14 @@ impl Layout {
             Fields::Struct { fields } => {
                 fields.iter().flat_map(|(_, lt)| lt.primitives()).collect()
             }
+        }
+    }
+
+    pub(crate) fn unit() -> Layout {
+        Self {
+            size: 0,
+            align: 0,
+            fields: Fields::Struct { fields: vec![] },
         }
     }
 }

@@ -257,7 +257,7 @@ impl Lowerer {
                             config,
                             dest,
                             src,
-                            size,
+                            size as u64,
                             8,
                             8,
                             true,
