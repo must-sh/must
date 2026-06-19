@@ -5,7 +5,7 @@ use salsa::Database;
 use crate::{
     ast::{self, ExprData, ExprId, Ident, PatternData, PatternId},
     bytecode::{self, Block, Func, FuncSig, Inst, Terminator},
-    common::Binop,
+    common::{Binop, Unop},
     driver::type_check_func,
     resolve::{self, parse_type_expr},
     tp::{Type, TypeInfo},
@@ -35,9 +35,44 @@ impl Place {
 
     /// Emits load instructions from self to the stack.
     pub fn load(self, b: &mut Builder, layout: &bytecode::Layout) {
+        self.store_into(b, Place::Stack, layout);
+    }
+
+    pub fn get_addr(self, b: &mut Builder, layout: &bytecode::Layout) {
         match self {
-            Place::Stack => (),
-            Place::Local { id, offset } => match &layout.abi() {
+            Place::Local { id, offset } => b.push_inst(Inst::LocalAddr { id, offset }),
+            Place::Ref { offset } => {
+                b.push_inst(Inst::PushInt(offset as i64));
+                b.push_inst(Inst::CapOffset)
+            }
+            Place::Stack => {
+                let size = layout.size();
+                let id = b.new_tmp_var(size as u32);
+                let place = Place::Local { id, offset: 0 };
+                match &layout.fields {
+                    bytecode::Fields::Primitive(_) => Place::Stack.store_into(b, place, layout),
+                    bytecode::Fields::Array { stride, count } => {
+                        let size = stride.size();
+                        for i in 0..*count {
+                            Place::Stack.store_into(b, place.add_offset((size * i) as u32), stride);
+                        }
+                    }
+                    bytecode::Fields::Struct { fields } => {
+                        for (offset, layout) in fields {
+                            Place::Stack.store_into(b, place.add_offset(*offset), layout);
+                        }
+                    }
+                }
+                b.push_inst(Inst::LocalAddr { id, offset: 0 })
+            }
+        };
+    }
+
+    /// Emits instructions to store data from self into place.
+    pub fn store_into(self, b: &mut Builder, place: Self, layout: &bytecode::Layout) {
+        match (self, place) {
+            (Place::Stack, Place::Stack) => (),
+            (Place::Local { id, offset }, Place::Stack) => match &layout.abi() {
                 bytecode::Abi::Unit => todo!(),
                 bytecode::Abi::Scalar(tp) => {
                     b.push_inst(Inst::Get {
@@ -58,23 +93,23 @@ impl Place {
                         tp: *tp2,
                     });
                 }
-                bytecode::Abi::Struct => {
-                    let id = b.new_tmp_var(8);
-                    b.push_inst(Inst::Set { id, offset: 0 });
-
-                    b.push_inst(Inst::LocalAddr { id, offset });
-                    b.push_inst(Inst::Get {
-                        id,
-                        offset: 0,
-                        tp: bytecode::Type::Ptr,
-                    });
-
-                    b.push_inst(Inst::MemCopy {
-                        size: layout.size(),
-                    });
-                }
+                bytecode::Abi::Struct => match &layout.fields {
+                    bytecode::Fields::Primitive(_) => self.store_into(b, Place::Stack, layout),
+                    bytecode::Fields::Array { stride, count } => {
+                        let size = stride.size();
+                        for i in 0..*count {
+                            self.add_offset((size * i) as u32)
+                                .store_into(b, Place::Stack, stride);
+                        }
+                    }
+                    bytecode::Fields::Struct { fields } => {
+                        for (offset, layout) in fields {
+                            self.add_offset(*offset).store_into(b, Place::Stack, layout);
+                        }
+                    }
+                },
             },
-            Place::Ref { offset } => match &layout.abi() {
+            (Place::Ref { offset }, Place::Stack) => match &layout.abi() {
                 bytecode::Abi::Unit => todo!(),
                 bytecode::Abi::Scalar(tp) => {
                     b.push_inst(Inst::Load { offset, tp: *tp });
@@ -119,10 +154,107 @@ impl Place {
                     });
                 }
             },
+            (Place::Stack, Place::Ref { offset }) => match &layout.abi() {
+                bytecode::Abi::Unit => todo!(),
+                bytecode::Abi::Scalar(_) => {
+                    b.push_inst(Inst::Store { offset });
+                }
+                bytecode::Abi::ScalarPair(_, _) => {
+                    let id = b.new_tmp_var(8);
+                    b.push_inst(Inst::Set { id, offset: 0 });
+
+                    b.push_inst(Inst::Get {
+                        id,
+                        offset: 0,
+                        tp: bytecode::Type::Ptr,
+                    });
+                    b.push_inst(Inst::Store { offset: offset + 8 });
+
+                    b.push_inst(Inst::Get {
+                        id,
+                        offset: 0,
+                        tp: bytecode::Type::Ptr,
+                    });
+                    b.push_inst(Inst::Store { offset });
+                }
+                bytecode::Abi::Struct => {
+                    self.get_addr(b, layout);
+                    let src_ptr = b.new_tmp_var(8);
+                    b.push_inst(Inst::Set {
+                        id: src_ptr,
+                        offset: 0,
+                    });
+                    place.get_addr(b, layout);
+                    b.push_inst(Inst::Get {
+                        id: src_ptr,
+                        offset: 0,
+                        tp: bytecode::Type::Ptr,
+                    });
+
+                    b.push_inst(Inst::MemCopy {
+                        size: layout.size(),
+                    });
+                }
+            },
+            (Place::Stack, Place::Local { id, offset }) => match &layout.abi() {
+                bytecode::Abi::Unit => todo!(),
+                bytecode::Abi::Scalar(_) => {
+                    b.push_inst(Inst::Set { id, offset });
+                }
+                bytecode::Abi::ScalarPair(_, _) => {
+                    b.push_inst(Inst::Set {
+                        id,
+                        offset: offset + 8,
+                    });
+                    b.push_inst(Inst::Set { id, offset });
+                }
+                bytecode::Abi::Struct => {
+                    self.get_addr(b, layout);
+                    let src_ptr = b.new_tmp_var(8);
+                    b.push_inst(Inst::Set {
+                        id: src_ptr,
+                        offset: 0,
+                    });
+                    place.get_addr(b, layout);
+                    b.push_inst(Inst::Get {
+                        id: src_ptr,
+                        offset: 0,
+                        tp: bytecode::Type::Ptr,
+                    });
+
+                    b.push_inst(Inst::MemCopy {
+                        size: layout.size(),
+                    });
+                }
+            },
+
+            (Place::Local { .. }, Place::Ref { .. })
+            | (Place::Local { .. }, Place::Local { .. }) => {
+                place.get_addr(b, layout);
+                self.get_addr(b, layout);
+                let size = layout.size();
+                b.push_inst(Inst::MemCopy { size });
+            }
+            (Place::Ref { .. }, Place::Local { .. }) | (Place::Ref { .. }, Place::Ref { .. }) => {
+                self.get_addr(b, layout);
+                let src_ptr = b.new_tmp_var(8);
+                b.push_inst(Inst::Set {
+                    id: src_ptr,
+                    offset: 0,
+                });
+
+                place.get_addr(b, layout);
+
+                b.push_inst(Inst::Get {
+                    id: src_ptr,
+                    offset: 0,
+                    tp: bytecode::Type::Ptr,
+                });
+                let size = layout.size();
+                b.push_inst(Inst::MemCopy { size });
+            }
         }
     }
-
-    pub fn store(&self, b: &mut Builder) {}
 }
 
 pub struct Builder<'a> {
@@ -195,12 +327,36 @@ impl<'a> Builder<'a> {
                 offset: 0,
             },
             ExprData::FnCall(name, args) => {
-                for arg in args.into_iter().rev() {
+                let place = match self.get_layout(e).abi() {
+                    bytecode::Abi::Unit
+                    | bytecode::Abi::Scalar(_)
+                    | bytecode::Abi::ScalarPair(_, _) => Place::Stack,
+                    bytecode::Abi::Struct => {
+                        let id = self.new_tmp_var(self.get_tp(e).get_size(self.type_defs));
+                        let place = Place::Local { id, offset: 0 };
+                        place.get_addr(self, &bytecode::Layout::ptr());
+                        place
+                    }
+                };
+                for arg in args.into_iter() {
                     let layout = &self.get_layout(arg);
-                    self.lower(arg).load(self, layout);
+                    match layout.abi() {
+                        bytecode::Abi::Unit
+                        | bytecode::Abi::Scalar(_)
+                        | bytecode::Abi::ScalarPair(_, _) => {
+                            self.lower(arg).load(self, layout);
+                        }
+                        bytecode::Abi::Struct => {
+                            let id = self.new_tmp_var(layout.size() as u32);
+                            let place = Place::Local { id, offset: 0 };
+                            self.lower(arg).store_into(self, place, layout);
+                            place.get_addr(self, layout);
+                        }
+                    }
                 }
+
                 self.push_inst(Inst::Call(name.text(self.db).clone()));
-                Place::Stack
+                place
             }
             ExprData::Error => panic!("no errors allowed here"),
             ExprData::If(cond, th, el) => {
@@ -247,11 +403,9 @@ impl<'a> Builder<'a> {
                 Place::Stack
             }
             ExprData::Assign(e1, e2) => {
-                let tp = self.type_map.get(&e1).unwrap();
-                let layout = tp.layout(&self.type_defs);
-                self.lower(e2).load(self, &layout);
-                let place = self.lower(e1);
-                self.store_to_place(place, &layout);
+                let layout = self.get_layout(e1);
+                let dest = self.lower(e1);
+                self.lower(e2).store_into(self, dest, &layout);
                 Place::Stack
             }
             ExprData::Deref(expr) => {
@@ -259,14 +413,8 @@ impl<'a> Builder<'a> {
                 Place::Ref { offset: 0 }
             }
             ExprData::AddressOf(e) => {
-                match self.lower(e) {
-                    Place::Local { id, offset } => self.push_inst(Inst::LocalAddr { id, offset }),
-                    Place::Ref { offset } => {
-                        self.push_inst(Inst::PushInt(offset as i64));
-                        self.push_inst(Inst::CapOffset)
-                    }
-                    Place::Stack => panic!(),
-                };
+                let layout = self.get_layout(e);
+                self.lower(e).get_addr(self, &layout);
                 Place::Stack
             }
             ExprData::Tuple(exprs) => {
@@ -297,8 +445,10 @@ impl<'a> Builder<'a> {
                     .collect::<Vec<_>>();
                 fields.sort_by_key(|(id, _)| **id);
                 let mut exprs_map: HashMap<_, _> = exprs.into_iter().collect();
-                for (_, name) in fields {
-                    self.lower(exprs_map.remove(&name).unwrap());
+                for (_, name) in fields.into_iter() {
+                    let e = exprs_map.remove(&name).unwrap();
+                    let layout = self.get_layout(e);
+                    self.lower(e).load(self, &layout);
                 }
                 Place::Stack
             }
@@ -314,90 +464,61 @@ impl<'a> Builder<'a> {
                 }
                 Place::Stack
             }
-            ExprData::Index(_, e2) => {
-                let tp = self.type_map.get(&e).unwrap();
-                let layout = tp.layout(&self.type_defs);
-                match self.type_map.get(&e2).unwrap() {
-                    Type::Int => self.lower(e),
+            ExprData::Index(e1, e2) => {
+                let elem_size = {
+                    match self.get_tp(e1) {
+                        Type::Slice(tp, _) | Type::Array(_, tp) => tp.get_size(self.type_defs),
+                        _ => panic!(),
+                    }
+                };
+
+                let offset = match self.get_tp(e1) {
+                    Type::Slice(_, _) => {
+                        self.lower(e1).load(self, &bytecode::Layout::ptr());
+                        0
+                    }
+                    Type::Array(_, _) => match self.lower(e1) {
+                        Place::Local { id, offset } => {
+                            self.push_inst(Inst::LocalAddr { id, offset });
+                            0
+                        }
+                        Place::Ref { offset } => offset,
+                        Place::Stack => todo!(),
+                    },
+                    _ => panic!(),
+                };
+
+                self.lower(e2).load(self, &bytecode::Layout::int64());
+
+                self.push_inst(Inst::PushInt(elem_size as i64));
+                self.push_inst(Inst::Binop(Binop::Mul));
+                self.push_inst(Inst::CapOffset);
+
+                match self.get_tp(e2) {
+                    Type::Int => Place::Ref { offset },
                     Type::Range => {
-                        self.lower(e);
-                        self.lower(e2);
+                        self.push_inst(Inst::PushInt(offset as i64));
+                        self.push_inst(Inst::CapOffset);
+                        self.lower(e2).load(
+                            self,
+                            &bytecode::Layout::strct(&[
+                                bytecode::Layout::int64(),
+                                bytecode::Layout::int64(),
+                            ]),
+                        );
                         self.push_inst(Inst::Binop(Binop::Sub));
-                        self.push_inst(Inst::PushInt(-1));
-                        self.push_inst(Inst::Binop(Binop::Mul));
+                        self.push_inst(Inst::Unop(Unop::Neg));
                         Place::Stack
                     }
-                    Type::Bool
-                    | Type::Fn(_)
-                    | Type::Ptr(_, _)
-                    | Type::Slice(_, _)
-                    | Type::Tuple(_)
-                    | Type::Var(_)
-                    | Type::Array(_, _)
-                    | Type::Error => panic!(),
+                    _ => panic!(),
                 }
             }
+
             ExprData::Range(e1, e2) => {
-                self.lower(e1);
-                self.lower(e2);
+                self.lower(e1).load(self, &bytecode::Layout::int64());
+                self.lower(e2).load(self, &bytecode::Layout::int64());
                 Place::Stack
             }
-        }
-    }
-
-    pub fn store_to_place(&mut self, place: Place, layout: &bytecode::Layout) {
-        match place {
-            Place::Local { id, offset } => match &layout.abi() {
-                bytecode::Abi::Unit => todo!(),
-                bytecode::Abi::Scalar(_) => {
-                    self.push_inst(Inst::Set { id, offset });
-                }
-                bytecode::Abi::ScalarPair(_, _) => {
-                    self.push_inst(Inst::Set {
-                        id,
-                        offset: offset + 8,
-                    });
-                    self.push_inst(Inst::Set { id, offset });
-                }
-                bytecode::Abi::Struct => {
-                    self.push_inst(Inst::LocalAddr { id, offset });
-                    self.push_inst(Inst::MemCopy {
-                        size: layout.size(),
-                    });
-                }
-            },
-            Place::Ref { offset } => match &layout.abi() {
-                bytecode::Abi::Unit => todo!(),
-                bytecode::Abi::Scalar(_) => {
-                    self.push_inst(Inst::Store { offset });
-                }
-                bytecode::Abi::ScalarPair(_, _) => {
-                    let id = self.new_tmp_var(8);
-                    self.push_inst(Inst::Set { id, offset: 0 });
-
-                    self.push_inst(Inst::Get {
-                        id,
-                        offset: 0,
-                        tp: bytecode::Type::Ptr,
-                    });
-                    self.push_inst(Inst::Store { offset: offset + 8 });
-
-                    self.push_inst(Inst::Get {
-                        id,
-                        offset: 0,
-                        tp: bytecode::Type::Ptr,
-                    });
-                    self.push_inst(Inst::Store { offset });
-                }
-                bytecode::Abi::Struct => {
-                    self.push_inst(Inst::PushInt(offset as i64));
-                    self.push_inst(Inst::CapOffset);
-                    self.push_inst(Inst::MemCopy {
-                        size: layout.size(),
-                    });
-                }
-            },
-            Place::Stack => todo!(),
         }
     }
 
@@ -427,62 +548,6 @@ impl<'a> Builder<'a> {
         }
     }
 
-    // pub fn lower_place(&mut self, e: ExprId<'a>) -> Place {
-
-    //         ExprData::Field(expr, ident) => {
-    //             let tp = self.type_map.get(&expr).unwrap();
-    //             let this_offset = self.get_offset(tp, ident);
-    //             match self.lower_place(expr) {
-    //                 Place::Local { id, offset } => Place::Local {
-    //                     id,
-    //                     offset: offset + this_offset,
-    //                 },
-    //                 Place::Ref { offset } => Place::Ref {
-    //                     offset: offset + this_offset,
-    //                 },
-    //             }
-    //         }
-    //         ExprData::Index(e1, e2) => {
-    //             let tp = self.type_map.get(&e2).unwrap();
-    //             let e1_tp = self.type_map.get(&e1).unwrap();
-    //             let elem_size = {
-    //                 match e1_tp {
-    //                     Type::Error
-    //                     | Type::Int
-    //                     | Type::Bool
-    //                     | Type::Range
-    //                     | Type::Fn(_)
-    //                     | Type::Ptr(_, _)
-    //                     | Type::Tuple(_)
-    //                     | Type::Var(_) => panic!(),
-    //                     Type::Slice(tp, _) | Type::Array(_, tp) => tp.get_size(self.type_defs),
-    //                 }
-    //             };
-    //             let offset = if matches!(e1_tp, Type::Slice(_, _)) {
-    //                 self.lower(e1);
-    //                 self.push_inst(Inst::Drop);
-    //                 0
-    //             } else {
-    //                 match self.lower_place(e1) {
-    //                     Place::Local { id, offset } => {
-    //                         self.push_inst(Inst::LocalAddr { id, offset });
-    //                         0
-    //                     }
-    //                     Place::Ref { offset } => offset,
-    //                 }
-    //             };
-    //             self.lower(e2);
-    //             if matches!(tp, Type::Range) {
-    //                 self.push_inst(Inst::Drop);
-    //             }
-    //             self.push_inst(Inst::PushInt(elem_size as i64));
-    //             self.push_inst(Inst::Binop(Binop::Mul));
-    //             self.push_inst(Inst::CapOffset);
-    //             Place::Ref { offset }
-    //         }
-    //     }
-    // }
-
     pub fn lower_pat(&mut self, pat: PatternId<'a>, tp: &Type, place: &Place) {
         match pat.data(self.db) {
             PatternData::Wildcard => {
@@ -495,8 +560,7 @@ impl<'a> Builder<'a> {
                 let size = tp.get_size(self.type_defs);
                 let layout = tp.layout(self.type_defs);
                 let id = self.new_var(name, size as u32);
-                place.load(self, &layout);
-                self.store_to_place(Place::Local { id, offset: 0 }, &layout);
+                place.store_into(self, Place::Local { id, offset: 0 }, &layout);
             }
             PatternData::Tuple(pats) => {
                 if let Type::Tuple(tps) = tp {
@@ -523,22 +587,38 @@ impl<'a> Builder<'a> {
     pub fn compile(mut self) -> LoweringResult {
         let mut args = vec![];
         let mut rets = vec![];
-        for (arg, tp) in self.func.args(self.db) {
+
+        for (arg, tp) in self.func.args(self.db).into_iter().rev() {
             let tp = parse_type_expr(self.db, tp);
             let layout = tp.layout(self.type_defs);
+            // if its extern, we can lower but whatever, they will be freed anyways
+            match layout.abi() {
+                bytecode::Abi::Unit
+                | bytecode::Abi::Scalar(_)
+                | bytecode::Abi::ScalarPair(_, _) => self.lower_pat(arg, &tp, &Place::Stack),
+                bytecode::Abi::Struct => self.lower_pat(arg, &tp, &Place::Ref { offset: 0 }),
+            }
             args.push(layout);
-            self.lower_pat(arg, &tp, &Place::Stack); // if its extern, we can lower but whatever, they will be freed anyways
         }
+
         let layout = if let Some(tp) = self.func.ret(self.db) {
             let tp = parse_type_expr(self.db, tp);
             tp.layout(self.type_defs)
         } else {
             bytecode::Layout::unit()
         };
+
         rets.push(layout.clone());
         let sig = FuncSig { args, rets };
         let res = if let Some(body) = self.func.body(self.db) {
-            self.lower(body).load(&mut self, &layout);
+            let res = self.lower(body);
+            let res_place = match layout.abi() {
+                bytecode::Abi::Unit
+                | bytecode::Abi::Scalar(_)
+                | bytecode::Abi::ScalarPair(_, _) => Place::Stack,
+                bytecode::Abi::Struct => Place::Ref { offset: 0 },
+            };
+            res.store_into(&mut self, res_place, &layout);
             LoweringResult::Function(Func {
                 blocks: self.blocks,
                 variables: self.variables,

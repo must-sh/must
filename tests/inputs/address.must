@@ -1,4 +1,6 @@
 
-fn main() -> *int {
-    &4
+extern fn must_print(x: *int);
+
+fn main() {
+    must_print(&4)
 }

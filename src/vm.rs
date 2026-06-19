@@ -81,7 +81,8 @@ impl<'a> VM<'a> {
                     Inst::Binop(op) => {
                         use crate::common::Binop::*;
                         use Value::*;
-                        let res = match (op, self.vstack.pop()?, self.vstack.pop()?) {
+                        let res = match (op, self.vstack.pop().unwrap(), self.vstack.pop().unwrap())
+                        {
                             (Add, Int(y), Int(x)) => Int(x + y),
                             (Sub, Int(y), Int(x)) => Int(x - y),
                             (Mul, Int(y), Int(x)) => Int(x * y),
@@ -95,14 +96,16 @@ impl<'a> VM<'a> {
                             (Ge, Int(y), Int(x)) => Bool(x >= y),
                             (And, Bool(y), Bool(x)) => Bool(x && y),
                             (Or, Bool(y), Bool(x)) => Bool(x || y),
-                            x => panic!("{:#?}\n stack:\n{:#?}", x, &self.vstack[..]),
+                            x => {
+                                panic!("{:#?}\n stack:\n{:#?}", x, &self.vstack[..])
+                            }
                         };
                         self.vstack.push(res)
                     }
                     Inst::Unop(op) => {
                         use crate::common::Unop::*;
                         use Value::*;
-                        let res = match (op, self.vstack.pop()?) {
+                        let res = match (op, self.vstack.pop().unwrap()) {
                             (Neg, Int(x)) => Int(-x),
                             (Not, Bool(x)) => Bool(!x),
                             x => panic!("{:#?}\n stack:\n{:#?}", x, &self.memory[0..self.sp]),
@@ -111,7 +114,7 @@ impl<'a> VM<'a> {
                     }
                     Inst::Set { id, offset } => {
                         let mut ptr = get_local_addr(id, offset);
-                        let val = self.vstack.pop()?;
+                        let val = self.vstack.pop().unwrap();
                         for b in val.as_bytes() {
                             self.memory[ptr] = b;
                             ptr += 1;
@@ -122,21 +125,21 @@ impl<'a> VM<'a> {
                         let val = Value::from_bytes(&self.memory[ptr..], tp);
                         self.vstack.push(val);
                     }
-                    Inst::Call(name) => self.eval_func(name)?,
+                    Inst::Call(name) => self.eval_func(name).unwrap(),
                     Inst::LocalAddr { id, offset } => {
                         let ptr = Value::Ref(get_local_addr(id, offset));
                         self.vstack.push(ptr)
                     }
                     Inst::Load { offset, tp } => {
-                        if let Value::Ref(ptr) = self.vstack.pop()? {
+                        if let Value::Ref(ptr) = self.vstack.pop().unwrap() {
                             let val =
                                 Value::from_bytes(&self.memory[(ptr + *offset as usize)..], tp);
                             self.vstack.push(val);
                         }
                     }
                     Inst::Store { offset } => {
-                        if let Value::Ref(mut ptr) = self.vstack.pop()? {
-                            let val = self.vstack.pop()?;
+                        let val = self.vstack.pop().unwrap();
+                        if let Value::Ref(mut ptr) = self.vstack.pop().unwrap() {
                             for b in val.as_bytes() {
                                 self.memory[ptr + *offset as usize] = b;
                                 ptr += 1;
@@ -144,24 +147,26 @@ impl<'a> VM<'a> {
                         }
                     }
                     Inst::Drop => {
-                        self.vstack.pop()?;
+                        self.vstack.pop().unwrap();
                     }
                     Inst::PushBool(b) => self.vstack.push(Value::Bool(*b)),
                     Inst::CapOffset => {
                         use Value::*;
-                        match (self.vstack.pop()?, self.vstack.pop()?) {
+                        match (self.vstack.pop().unwrap(), self.vstack.pop().unwrap()) {
                             (Int(offset), Ref(ptr)) => {
                                 self.vstack.push(Ref(ptr + offset as usize));
                             }
                             _ => panic!(),
                         }
                     }
-                    Inst::MemCopy { size } => match (self.vstack.pop()?, self.vstack.pop()?) {
-                        (Value::Ref(src), Value::Ref(dest)) => {
-                            self.memory.copy_within(src..(src + *size as usize), dest);
+                    Inst::MemCopy { size } => {
+                        match (self.vstack.pop().unwrap(), self.vstack.pop().unwrap()) {
+                            (Value::Ref(src), Value::Ref(dest)) => {
+                                self.memory.copy_within(src..(src + *size as usize), dest);
+                            }
+                            _ => panic!(),
                         }
-                        _ => panic!(),
-                    },
+                    }
                     Inst::Dup => {
                         let v = self.vstack.last().unwrap();
                         self.vstack.push(*v);
@@ -172,7 +177,7 @@ impl<'a> VM<'a> {
             match &f.blocks[current_block].terminator {
                 Terminator::Jmp(id) => current_block = *id,
                 Terminator::Br(th, el) => {
-                    if let Value::Bool(cond) = self.vstack.pop()? {
+                    if let Value::Bool(cond) = self.vstack.pop().unwrap() {
                         current_block = if cond { *th } else { *el };
                     }
                 }
@@ -197,11 +202,11 @@ impl<'a> VM<'a> {
                 Some(())
             }
             "must_print" => {
-                let val = self.vstack.pop()?;
+                let val = self.vstack.pop().unwrap();
                 println!("{val:?}");
                 Some(())
             }
-            "must_alloc" => match self.vstack.pop()? {
+            "must_alloc" => match self.vstack.pop().unwrap() {
                 Value::Int(n) => {
                     let ptr = self.hp;
                     self.hp += n as usize;
