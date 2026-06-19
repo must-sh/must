@@ -221,8 +221,8 @@ impl Lowerer {
                         stack.push(val);
                     }
                     bytecode::Inst::Store { offset } => {
-                        let ptr = stack.pop().unwrap();
                         let val = stack.pop().unwrap();
+                        let ptr = stack.pop().unwrap();
                         b.ins().store(MemFlags::new(), val, ptr, offset as i32);
                     }
                     bytecode::Inst::CapOffset => {
@@ -243,7 +243,6 @@ impl Lowerer {
                             let val = stack.pop().unwrap();
                             args.push(val);
                         }
-                        args.reverse();
                         let res = b.ins().call(f, &args);
                         for v in b.inst_results(res) {
                             stack.push(*v)
@@ -289,7 +288,6 @@ impl Lowerer {
                         let val = stack.pop().unwrap();
                         rets.push(val);
                     }
-                    rets.reverse(); // MAYBE?
                     b.ins().return_(&rets);
                 }
             };

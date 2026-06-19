@@ -14,14 +14,14 @@ pub enum Inst {
     Get { id: usize, offset: u32, tp: Type },
     LocalAddr { id: usize, offset: u32 },
 
-    // PTR ON TOP, VALUE SECOND
+    // VALUE ON TOP, PTR SECOND
     Load { offset: u32, tp: Type },
     Store { offset: u32 },
 
     // SRC ON TOP, DST SECOND
     MemCopy { size: usize },
 
-    // REF, INT -> REF + INT
+    // OFFSET FIRST, PTR SECOND
     CapOffset,
 
     Drop,
@@ -198,7 +198,12 @@ impl Layout {
     pub fn abi(&self) -> Abi {
         match &self.fields {
             Fields::Primitive(tp) => Abi::Scalar(*tp),
-            Fields::Array { stride, count } => Abi::Struct,
+            Fields::Array { stride, count } => match stride.size() * count {
+                0 => Abi::Unit,
+                1..=8 => Abi::Scalar(Type::Int64),
+                9..=16 => Abi::ScalarPair(Type::Int64, Type::Int64),
+                17.. => Abi::Struct,
+            },
             Fields::Struct { fields } => match self.primitives()[..] {
                 [] => Abi::Unit,
                 [tp] => Abi::Scalar(tp),
