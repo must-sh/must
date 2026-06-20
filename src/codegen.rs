@@ -17,9 +17,25 @@ use crate::bytecode;
 impl bytecode::Type {
     pub fn as_cranelift_tp(self) -> ir::Type {
         match self {
-            bytecode::Type::Int64 => types::I64,
             bytecode::Type::Bool => types::I8,
             bytecode::Type::Ptr => types::I64,
+
+            bytecode::Type::Int128 => types::I128,
+            bytecode::Type::Int64 => types::I64,
+            bytecode::Type::Int32 => types::I32,
+            bytecode::Type::Int16 => types::I16,
+            bytecode::Type::Int8 => types::I8,
+
+            bytecode::Type::UInt128 => types::I128,
+            bytecode::Type::UInt64 => types::I64,
+            bytecode::Type::UInt32 => types::I32,
+            bytecode::Type::UInt16 => types::I16,
+            bytecode::Type::UInt8 => types::I8,
+
+            bytecode::Type::Float16 => types::F16,
+            bytecode::Type::Float32 => types::F32,
+            bytecode::Type::Float64 => types::F64,
+            bytecode::Type::Float128 => types::F128,
         }
     }
 }

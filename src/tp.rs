@@ -9,43 +9,48 @@ use crate::{
     resolve::ModuleDefs,
 };
 
-#[derive(Debug, PartialEq, Clone, salsa::Update)]
-pub enum Type {
+#[salsa::interned(debug)]
+pub struct TypeId {
+    pub data: TypeData<'db>,
+}
+
+#[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::Update)]
+pub enum TypeData<'db> {
     Error,
 
     Int,
     Bool,
     Range,
-    Fn(FnSig),
-    Ptr(Box<Type>, bool),
-    Slice(Box<Type>, bool),
-    Tuple(Vec<Type>),
+    Fn(FnSig<'db>),
+    Ptr(TypeId<'db>, bool),
+    Slice(TypeId<'db>, bool),
+    Tuple(Vec<TypeId<'db>>),
     Var(usize),
-    Array(usize, Box<Type>),
+    Array(usize, Box<TypeId<'db>>),
 }
 
-impl Type {
-    pub fn coerce_into(&self, into: &Type) -> bool {
-        match (self, into) {
-            (_, Type::Error) | (Type::Error, _) => true,
-            (Type::Int, Type::Int) => true,
-            (Type::Bool, Type::Bool) => true,
-            (Type::Range, Type::Range) => true,
-            (Type::Var(id1), Type::Var(id2)) => id1 == id2,
-            (Type::Tuple(tps1), Type::Tuple(tps2)) => {
+impl<'db> TypeId<'db> {
+    pub fn coerce_into(self, into: TypeId<'db>, db: &dyn Database) -> bool {
+        match (self.data(db), into.data(db)) {
+            (_, TypeData::Error) | (TypeData::Error, _) => true,
+            (TypeData::Int, TypeData::Int) => true,
+            (TypeData::Bool, TypeData::Bool) => true,
+            (TypeData::Range, TypeData::Range) => true,
+            (TypeData::Var(id1), TypeData::Var(id2)) => id1 == id2,
+            (TypeData::Tuple(tps1), TypeData::Tuple(tps2)) => {
                 tps1.len() == tps2.len()
                     && tps1
                         .iter()
                         .zip(tps2.iter())
-                        .all(|(tp1, tp2)| tp1.coerce_into(tp2))
+                        .all(|(tp1, tp2)| tp1.coerce_into(tp2, db))
             }
-            (Type::Ptr(tp1, is_mut1), Type::Ptr(tp2, is_mut2)) => {
+            (TypeData::Ptr(tp1, is_mut1), TypeData::Ptr(tp2, is_mut2)) => {
                 (!is_mut2 || *is_mut1) && tp1.coerce_into(tp2) && (!is_mut2 || tp2.coerce_into(tp1))
             }
-            (Type::Slice(tp1, is_mut1), Type::Slice(tp2, is_mut2)) => {
+            (TypeData::Slice(tp1, is_mut1), TypeData::Slice(tp2, is_mut2)) => {
                 (!is_mut2 || *is_mut1) && tp1.coerce_into(tp2) && (!is_mut2 || tp2.coerce_into(tp1))
             }
-            (Type::Array(n1, tp1), Type::Array(n2, tp2)) => {
+            (TypeData::Array(n1, tp1), TypeData::Array(n2, tp2)) => {
                 n1 == n2 && tp1.coerce_into(tp2) && tp2.coerce_into(tp1)
             }
             (
@@ -66,25 +71,6 @@ impl Type {
                     && ret1.coerce_into(ret2)
             }
             _ => false,
-        }
-    }
-
-    pub fn get_size<'db>(&self, type_map: &HashMap<usize, TypeInfo<'db>>) -> u32 {
-        match self {
-            Type::Error => panic!(),
-            Type::Int => 8,
-            Type::Bool => 1,
-            Type::Fn(_) | Type::Ptr(_, _) => 8,
-            Type::Range | Type::Slice(_, _) => 16,
-            Type::Tuple(tps) => tps.iter().map(|tp| tp.get_size(type_map)).sum(),
-            Type::Var(id) => {
-                let info = type_map.get(id).unwrap();
-                info.fields
-                    .iter()
-                    .map(|(_, tp)| tp.1.get_size(type_map))
-                    .sum()
-            }
-            Type::Array(n, tp) => *n as u32 * tp.get_size(type_map),
         }
     }
 
@@ -127,10 +113,10 @@ impl Type {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, salsa::Update)]
-pub struct FnSig {
-    pub args: Vec<Type>,
-    pub ret: Box<Type>,
+#[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::Update)]
+pub struct FnSig<'db> {
+    pub args: Vec<TypeId<'db>>,
+    pub ret: TypeId<'db>,
 }
 
 #[derive(Debug, PartialEq, Clone, salsa::Update)]
