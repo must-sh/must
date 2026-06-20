@@ -32,6 +32,19 @@ impl Value {
             bytecode::Type::Int64 => Value::Int(i64::from_le_bytes(b.try_into().unwrap())),
             bytecode::Type::Bool => Value::Bool(b[0] != 0),
             bytecode::Type::Ptr => Value::Ref(usize::from_le_bytes(b.try_into().unwrap())),
+            bytecode::Type::Int128 => todo!(),
+            bytecode::Type::Int32 => todo!(),
+            bytecode::Type::Int16 => todo!(),
+            bytecode::Type::Int8 => todo!(),
+            bytecode::Type::UInt128 => todo!(),
+            bytecode::Type::UInt64 => todo!(),
+            bytecode::Type::UInt32 => todo!(),
+            bytecode::Type::UInt16 => todo!(),
+            bytecode::Type::UInt8 => todo!(),
+            bytecode::Type::Float16 => todo!(),
+            bytecode::Type::Float32 => todo!(),
+            bytecode::Type::Float64 => todo!(),
+            bytecode::Type::Float128 => todo!(),
         }
     }
 }
@@ -156,7 +169,7 @@ impl<'a> VM<'a> {
                             (Int(offset), Ref(ptr)) => {
                                 self.vstack.push(Ref(ptr + offset as usize));
                             }
-                            _ => panic!(),
+                            (x, y) => panic!("in {}, {:?} {:?}", name, x, y),
                         }
                     }
                     Inst::MemCopy { size } => {

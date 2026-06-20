@@ -100,17 +100,27 @@ pub struct Func {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Type {
+    Int128,
     Int64,
+    Int32,
+    Int16,
+    Int8,
+
+    UInt128,
+    UInt64,
+    UInt32,
+    UInt16,
+    UInt8,
+
+    Float16,
+    Float32,
+    Float64,
+    Float128,
+
     Bool,
     Ptr,
-}
-
-impl Type {
-    pub fn as_layout(self) -> Layout {
-        todo!()
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -168,18 +178,31 @@ impl Layout {
         }
     }
 
+    /// Conforming to System V ABI (as Gemini says because idc really)
     pub fn strct(tps: &[Layout]) -> Self {
-        let fields = tps
-            .iter()
-            .scan(0, |off, tp| {
-                let res = Some((*off, tp.clone()));
-                *off += tp.size() as u32;
-                res
-            })
-            .collect();
+        let mut off = 0;
+        let mut max_align = 1;
+        let mut fields = Vec::new();
+
+        for tp in tps {
+            let align = tp.align;
+            max_align = max_align.max(align);
+
+            // Calculate padding needed to satisfy the field's alignment
+            let padding = (align - (off % align)) % align;
+            off += padding;
+
+            fields.push((off, tp.clone()));
+            off += tp.size as u32;
+        }
+
+        // The total size must be a multiple of the struct's maximum alignment
+        let tail_padding = (max_align - (off % max_align)) % max_align;
+        let total_size = off + tail_padding;
+
         Self {
-            size: tps.iter().map(|lt| lt.size()).sum(),
-            align: tps.iter().map(|lt| lt.align()).max().unwrap_or(0),
+            size: total_size as usize,
+            align: max_align,
             fields: Fields::Struct { fields },
         }
     }
@@ -197,19 +220,46 @@ impl Layout {
 
     pub fn abi(&self) -> Abi {
         match &self.fields {
+            // Base primitives just map directly to Scalar
             Fields::Primitive(tp) => Abi::Scalar(*tp),
-            Fields::Array { stride, count } => match stride.size() * count {
-                0 => Abi::Unit,
-                1..=8 => Abi::Scalar(Type::Int64),
-                9..=16 => Abi::ScalarPair(Type::Int64, Type::Int64),
-                17.. => Abi::Struct,
-            },
-            Fields::Struct { fields } => match self.primitives()[..] {
-                [] => Abi::Unit,
-                [tp] => Abi::Scalar(tp),
-                [tp1, tp2] => Abi::ScalarPair(tp1, tp2),
-                _ => Abi::Struct,
-            },
+
+            Fields::Array { .. } | Fields::Struct { .. } => {
+                match self.size {
+                    0 => Abi::Unit,
+
+                    1..=8 => {
+                        let prims = self.primitives();
+                        if prims.len() == 1 {
+                            Abi::Scalar(prims[0])
+                        } else {
+                            Abi::Scalar(Type::Int64) // Pack small structs into one integer register
+                        }
+                    }
+
+                    9..=16 => {
+                        let prims = self.primitives();
+
+                        // SYSTEM V RULE: If an aggregate contains a Float80 (X87 class),
+                        // the entire argument is forced to be passed in MEMORY.
+                        if prims.contains(&Type::Float128) {
+                            return Abi::Struct;
+                        }
+
+                        // SYSTEM V RULE: Int128 or any other 9-16 byte aggregate is split
+                        // into two 64-bit INTEGER chunks (passed in two registers).
+                        // If it's literally just a wrapper around a single Int128, you can
+                        // optionally return Abi::Scalar(Type::Int128) if your backend prefers it.
+                        if prims.len() == 1 && matches!(prims[0], Type::Int128 | Type::UInt128) {
+                            Abi::Scalar(prims[0])
+                        } else {
+                            Abi::ScalarPair(Type::Int64, Type::Int64)
+                        }
+                    }
+
+                    // > 16 bytes always goes to memory
+                    _ => Abi::Struct,
+                }
+            }
         }
     }
 
@@ -238,6 +288,19 @@ impl Type {
             Type::Int64 => 8,
             Type::Bool => 1,
             Type::Ptr => 8,
+            Type::Int32 => 4,
+            Type::Int16 => 2,
+            Type::Int8 => 1,
+            Type::UInt64 => 8,
+            Type::UInt32 => 4,
+            Type::UInt16 => 2,
+            Type::UInt8 => 1,
+            Type::Int128 => 16,
+            Type::UInt128 => 16,
+            Type::Float16 => 2,
+            Type::Float32 => 4,
+            Type::Float64 => 8,
+            Type::Float128 => 16,
         }
     }
 
@@ -246,6 +309,19 @@ impl Type {
             Type::Int64 => 8,
             Type::Bool => 1,
             Type::Ptr => 8,
+            Type::Int32 => 4,
+            Type::Int16 => 2,
+            Type::Int8 => 1,
+            Type::UInt64 => 8,
+            Type::UInt32 => 4,
+            Type::UInt16 => 2,
+            Type::UInt8 => 1,
+            Type::Int128 => 16,
+            Type::UInt128 => 16,
+            Type::Float16 => 2,
+            Type::Float32 => 4,
+            Type::Float64 => 8,
+            Type::Float128 => 16,
         }
     }
 }
