@@ -27,12 +27,12 @@ pub fn type_check_func<'db>(
     let mut env: tp::Env = tp::Env::new(db, defs);
     for (arg, tp) in func.args(db) {
         let tp = resolve::parse_type_expr(db, tp);
-        let bindings = env.check_pat(arg, &tp);
+        let bindings = env.check_pat(arg, tp);
         env.extend(bindings);
     }
     let ret_tp = resolve::parse_fn_signature(db, func).ret;
     match func.body(db) {
-        Some(body) => env.check_expr(body, &ret_tp, false),
+        Some(body) => env.check_expr(body, ret_tp, false),
         None => assert!(func.is_ext(db)),
     }
     env.finish()

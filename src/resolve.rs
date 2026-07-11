@@ -1,50 +1,52 @@
 use crate::{
     ast::{self, FnDef, Ident, TypeExprId},
     input::{self, Source},
-    tp::{FnSig, Type, TypeInfo},
+    tp::{FnSig, TypeData, TypeId, TypeInfo},
 };
 use salsa::Database;
 use std::collections::HashMap;
 
 #[salsa::tracked]
-pub(crate) fn parse_type_expr<'db>(db: &'db dyn Database, tp: TypeExprId<'db>) -> Type {
-    match tp.data(db) {
-        ast::TypeExprData::Int => Type::Int,
-        ast::TypeExprData::Bool => Type::Bool,
+pub(crate) fn parse_type_expr<'db>(db: &'db dyn Database, tp: TypeExprId<'db>) -> TypeId<'db> {
+    let tp = match tp.data(db) {
+        ast::TypeExprData::Int => TypeData::Int,
+        ast::TypeExprData::Bool => TypeData::Bool,
         ast::TypeExprData::Fn(args, ret) => {
             let args = args
                 .into_iter()
                 .map(|arg| parse_type_expr(db, arg))
                 .collect();
-            let ret = Box::new(parse_type_expr(db, ret));
+            let ret = parse_type_expr(db, ret);
             let fn_sig = FnSig { args, ret };
-            Type::Fn(fn_sig)
+
+            TypeData::Fn(fn_sig)
         }
         ast::TypeExprData::Ptr(tp, is_mut) => {
-            let tp = Box::new(parse_type_expr(db, tp));
-            Type::Ptr(tp, is_mut)
+            let tp = parse_type_expr(db, tp);
+            TypeData::Ptr(tp, is_mut)
         }
         ast::TypeExprData::Tuple(tps) => {
             let tps = tps.into_iter().map(|tp| parse_type_expr(db, tp)).collect();
-            Type::Tuple(tps)
+            TypeData::Tuple(tps)
         }
-        ast::TypeExprData::Var(id) => Type::Var(id.get_id()),
-        ast::TypeExprData::Array(n, tp) => Type::Array(n, Box::new(parse_type_expr(db, tp))),
+        ast::TypeExprData::Var(id) => TypeData::Var(id.get_id()),
+        ast::TypeExprData::Array(n, tp) => TypeData::Array(n, parse_type_expr(db, tp)),
         ast::TypeExprData::Slice(tp, is_mut) => {
-            let tp = Box::new(parse_type_expr(db, tp));
-            Type::Slice(tp, is_mut)
+            let tp = parse_type_expr(db, tp);
+            TypeData::Slice(tp, is_mut)
         }
-    }
+    };
+    TypeId::new(db, tp)
 }
 
 #[derive(Debug, PartialEq, Clone, salsa::Update)]
 pub struct ModuleDefs<'db> {
-    pub function_map: HashMap<Ident<'db>, FnSig>,
+    pub function_map: HashMap<Ident<'db>, FnSig<'db>>,
     pub type_map: HashMap<usize, TypeInfo<'db>>,
 }
 
 #[salsa::tracked]
-pub fn parse_fn_signature<'db>(db: &'db dyn Database, func: FnDef<'db>) -> FnSig {
+pub fn parse_fn_signature<'db>(db: &'db dyn Database, func: FnDef<'db>) -> FnSig<'db> {
     let args = func
         .args(db)
         .into_iter()
@@ -53,9 +55,8 @@ pub fn parse_fn_signature<'db>(db: &'db dyn Database, func: FnDef<'db>) -> FnSig
     let ret = if let Some(tp) = func.ret(db) {
         parse_type_expr(db, tp)
     } else {
-        Type::Tuple(vec![])
+        TypeId::new(db, TypeData::Tuple(vec![]))
     };
-    let ret = Box::new(ret);
     FnSig { args, ret }
 }
 
