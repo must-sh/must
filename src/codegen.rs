@@ -102,10 +102,6 @@ impl Lowerer {
         for ret in &f.rets {
             match ret.abi() {
                 bytecode::Abi::Scalar(tp) => sig.returns.push(AbiParam::new(tp.as_cranelift_tp())),
-                bytecode::Abi::ScalarPair(tp1, tp2) => {
-                    sig.returns.push(AbiParam::new(tp1.as_cranelift_tp()));
-                    sig.returns.push(AbiParam::new(tp2.as_cranelift_tp()))
-                }
                 bytecode::Abi::Struct => sig.params.push(AbiParam::special(
                     bytecode::Type::Ptr.as_cranelift_tp(),
                     ArgumentPurpose::StructReturn,
@@ -116,10 +112,6 @@ impl Lowerer {
         for arg in &f.args {
             match arg.abi() {
                 bytecode::Abi::Scalar(tp) => sig.params.push(AbiParam::new(tp.as_cranelift_tp())),
-                bytecode::Abi::ScalarPair(tp1, tp2) => {
-                    sig.params.push(AbiParam::new(tp1.as_cranelift_tp()));
-                    sig.params.push(AbiParam::new(tp2.as_cranelift_tp()))
-                }
                 bytecode::Abi::Struct => sig
                     .params
                     .push(AbiParam::new(bytecode::Type::Ptr.as_cranelift_tp())),
@@ -155,10 +147,10 @@ impl Lowerer {
 
         let mut variable_map = HashMap::new();
 
-        for (id, size) in f.variables.iter().enumerate() {
+        for (id, lt) in f.variables.iter().enumerate() {
             let ss = b.create_sized_stack_slot(StackSlotData::new(
                 cranelift_codegen::ir::StackSlotKind::ExplicitSlot,
-                *size,
+                lt.size() as u32,
                 8,
             ));
             variable_map.insert(id, ss);

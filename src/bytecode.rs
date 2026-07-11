@@ -95,7 +95,7 @@ impl Display for Terminator {
 #[derive(Debug, Clone)]
 pub struct Func {
     pub blocks: Vec<Block>,
-    pub variables: Vec<u32>,
+    pub variables: Vec<Layout>,
     pub sig: FuncSig,
 }
 
@@ -134,7 +134,6 @@ pub struct Layout {
 pub enum Abi {
     Unit,
     Scalar(Type),
-    ScalarPair(Type, Type),
     Struct,
 }
 
@@ -227,48 +226,13 @@ impl Layout {
                 match self.size {
                     0 => Abi::Unit,
 
-                    1..=8 => {
-                        let prims = self.primitives();
-                        if prims.len() == 1 {
-                            Abi::Scalar(prims[0])
-                        } else {
-                            Abi::Scalar(Type::Int64) // Pack small structs into one integer register
-                        }
-                    }
+                    1..=8 => Abi::Scalar(Type::Int64),
 
-                    9..=16 => {
-                        let prims = self.primitives();
-
-                        // SYSTEM V RULE: If an aggregate contains a Float80 (X87 class),
-                        // the entire argument is forced to be passed in MEMORY.
-                        if prims.contains(&Type::Float128) {
-                            return Abi::Struct;
-                        }
-
-                        // SYSTEM V RULE: Int128 or any other 9-16 byte aggregate is split
-                        // into two 64-bit INTEGER chunks (passed in two registers).
-                        // If it's literally just a wrapper around a single Int128, you can
-                        // optionally return Abi::Scalar(Type::Int128) if your backend prefers it.
-                        if prims.len() == 1 && matches!(prims[0], Type::Int128 | Type::UInt128) {
-                            Abi::Scalar(prims[0])
-                        } else {
-                            Abi::ScalarPair(Type::Int64, Type::Int64)
-                        }
-                    }
+                    9..=16 => Abi::Scalar(Type::Int128),
 
                     // > 16 bytes always goes to memory
                     _ => Abi::Struct,
                 }
-            }
-        }
-    }
-
-    pub fn primitives(&self) -> Vec<Type> {
-        match &self.fields {
-            Fields::Primitive(tp) => vec![*tp],
-            Fields::Array { stride, count } => stride.primitives().repeat(*count),
-            Fields::Struct { fields } => {
-                fields.iter().flat_map(|(_, lt)| lt.primitives()).collect()
             }
         }
     }
@@ -278,6 +242,13 @@ impl Layout {
             size: 0,
             align: 0,
             fields: Fields::Struct { fields: vec![] },
+        }
+    }
+
+    pub(crate) fn as_primitive(&self) -> Option<Type> {
+        match self.fields {
+            Fields::Primitive(tp) => Some(tp),
+            _ => None,
         }
     }
 }

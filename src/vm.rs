@@ -12,7 +12,8 @@ pub struct VM<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub enum Value {
-    Int(i64),
+    Int64(i64),
+    Int128(i128),
     Bool(bool),
     Ref(usize),
 }
@@ -20,7 +21,8 @@ pub enum Value {
 impl Value {
     fn as_bytes(self) -> Vec<u8> {
         match self {
-            Value::Int(n) => n.to_le_bytes().to_vec(),
+            Value::Int64(n) => n.to_le_bytes().to_vec(),
+            Value::Int128(n) => n.to_le_bytes().to_vec(),
             Value::Bool(b) => vec![b as u8],
             Value::Ref(n) => n.to_le_bytes().to_vec(),
         }
@@ -29,10 +31,10 @@ impl Value {
     fn from_bytes(bytes: &[u8], tp: &bytecode::Type) -> Self {
         let (b, _) = bytes.split_at(tp.size() as usize);
         match tp {
-            bytecode::Type::Int64 => Value::Int(i64::from_le_bytes(b.try_into().unwrap())),
+            bytecode::Type::Int64 => Value::Int64(i64::from_le_bytes(b.try_into().unwrap())),
             bytecode::Type::Bool => Value::Bool(b[0] != 0),
             bytecode::Type::Ptr => Value::Ref(usize::from_le_bytes(b.try_into().unwrap())),
-            bytecode::Type::Int128 => todo!(),
+            bytecode::Type::Int128 => Value::Int128(i128::from_le_bytes(b.try_into().unwrap())),
             bytecode::Type::Int32 => todo!(),
             bytecode::Type::Int16 => todo!(),
             bytecode::Type::Int8 => todo!(),
@@ -57,7 +59,7 @@ impl<'a> VM<'a> {
             vstack,
             memory: [0; 1024 * 1024],
             sp: 0,
-            hp: 4096,
+            hp: 512 * 1024,
         }
     }
 
@@ -68,17 +70,17 @@ impl<'a> VM<'a> {
         };
 
         let bp = self.sp;
-        self.sp += f.variables.iter().sum::<u32>() as usize;
-        if self.sp >= 4096 {
+        self.sp += f.variables.iter().map(|lt| lt.size()).sum::<usize>();
+        if self.sp >= 512 * 1024 {
             panic!();
         }
 
         let local_offsets: Vec<u32> = f
             .variables
             .iter()
-            .scan(0, |offset, size| {
+            .scan(0, |offset, lt| {
                 let res = Some(*offset);
-                *offset += size;
+                *offset += lt.size() as u32;
                 res
             })
             .collect();
@@ -90,23 +92,23 @@ impl<'a> VM<'a> {
         loop {
             for inst in &f.blocks[current_block].insts {
                 match inst {
-                    Inst::PushInt(n) => self.vstack.push(Value::Int(*n)),
+                    Inst::PushInt(n) => self.vstack.push(Value::Int64(*n)),
                     Inst::Binop(op) => {
                         use crate::common::Binop::*;
                         use Value::*;
                         let res = match (op, self.vstack.pop().unwrap(), self.vstack.pop().unwrap())
                         {
-                            (Add, Int(y), Int(x)) => Int(x + y),
-                            (Sub, Int(y), Int(x)) => Int(x - y),
-                            (Mul, Int(y), Int(x)) => Int(x * y),
-                            (Div, Int(y), Int(x)) => Int(x / y),
-                            (Mod, Int(y), Int(x)) => Int(x % y),
-                            (Eq, Int(y), Int(x)) => Bool(x == y),
-                            (NEq, Int(y), Int(x)) => Bool(x != y),
-                            (Lt, Int(y), Int(x)) => Bool(x < y),
-                            (Gt, Int(y), Int(x)) => Bool(x > y),
-                            (Le, Int(y), Int(x)) => Bool(x <= y),
-                            (Ge, Int(y), Int(x)) => Bool(x >= y),
+                            (Add, Int64(y), Int64(x)) => Int64(x + y),
+                            (Sub, Int64(y), Int64(x)) => Int64(x - y),
+                            (Mul, Int64(y), Int64(x)) => Int64(x * y),
+                            (Div, Int64(y), Int64(x)) => Int64(x / y),
+                            (Mod, Int64(y), Int64(x)) => Int64(x % y),
+                            (Eq, Int64(y), Int64(x)) => Bool(x == y),
+                            (NEq, Int64(y), Int64(x)) => Bool(x != y),
+                            (Lt, Int64(y), Int64(x)) => Bool(x < y),
+                            (Gt, Int64(y), Int64(x)) => Bool(x > y),
+                            (Le, Int64(y), Int64(x)) => Bool(x <= y),
+                            (Ge, Int64(y), Int64(x)) => Bool(x >= y),
                             (And, Bool(y), Bool(x)) => Bool(x && y),
                             (Or, Bool(y), Bool(x)) => Bool(x || y),
                             x => {
@@ -119,7 +121,7 @@ impl<'a> VM<'a> {
                         use crate::common::Unop::*;
                         use Value::*;
                         let res = match (op, self.vstack.pop().unwrap()) {
-                            (Neg, Int(x)) => Int(-x),
+                            (Neg, Int64(x)) => Int64(-x),
                             (Not, Bool(x)) => Bool(!x),
                             x => panic!("{:#?}\n stack:\n{:#?}", x, &self.memory[0..self.sp]),
                         };
@@ -166,7 +168,7 @@ impl<'a> VM<'a> {
                     Inst::CapOffset => {
                         use Value::*;
                         match (self.vstack.pop().unwrap(), self.vstack.pop().unwrap()) {
-                            (Int(offset), Ref(ptr)) => {
+                            (Int64(offset), Ref(ptr)) => {
                                 self.vstack.push(Ref(ptr + offset as usize));
                             }
                             (x, y) => panic!("in {}, {:?} {:?}", name, x, y),
@@ -211,7 +213,7 @@ impl<'a> VM<'a> {
                     .trim()
                     .parse::<i64>()
                     .expect("this is not a valid integer");
-                self.vstack.push(Value::Int(val));
+                self.vstack.push(Value::Int64(val));
                 Some(())
             }
             "must_print" => {
@@ -220,11 +222,11 @@ impl<'a> VM<'a> {
                 Some(())
             }
             "must_alloc" => match self.vstack.pop().unwrap() {
-                Value::Int(n) => {
+                Value::Int64(n) => {
                     let ptr = self.hp;
                     self.hp += n as usize;
                     self.vstack.push(Value::Ref(ptr));
-                    self.vstack.push(Value::Int(n));
+                    self.vstack.push(Value::Int64(n));
                     Some(())
                 }
                 x => panic!("{:?}", x),
