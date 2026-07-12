@@ -214,7 +214,7 @@ impl<'a> Env<'a> {
                 tps1.len() == tps2.len()
                     && tps1
                         .into_iter()
-                        .zip(tps2.into_iter())
+                        .zip(tps2)
                         .all(|(tp1, tp2)| self.coerce_into(tp1, tp2))
             }
             (TypeData::Ptr(tp1, is_mut1), TypeData::Ptr(tp2, is_mut2)) => {
@@ -417,7 +417,7 @@ impl<'a> Env<'a> {
                     TypeData::Var(id) => {
                         if let Some(tp_info) = self.get_type_info(id) {
                             if let Some(tp) = tp_info.fields.get(&ident) {
-                                (tp.1.clone(), is_mut)
+                                (tp.1, is_mut)
                             } else {
                                 Diagnostic::no_field_on_type(db, e.span(db), ident, tp)
                                     .accumulate(db);
@@ -541,7 +541,7 @@ impl<'a> Env<'a> {
                 vec![(
                     name,
                     VarBinding {
-                        tp: tp.clone(),
+                        tp,
                         is_mut,
                     },
                 )]

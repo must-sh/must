@@ -38,7 +38,7 @@ pub fn type_check_func<'db>(
     env.finish()
 }
 
-pub fn compile<'db>(db: &'db dyn Database, sf: input::Source) -> bytecode::Prog {
+pub fn compile(db: &dyn Database, sf: input::Source) -> bytecode::Prog {
     let ast = input::parse_file(db, sf);
     let mut funcs: HashMap<String, bytecode::Func> = HashMap::new();
     let mut externs: HashMap<String, bytecode::FuncSig> = HashMap::new();

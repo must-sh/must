@@ -140,7 +140,7 @@ pub enum Abi {
 #[derive(Debug, Clone)]
 pub enum Fields {
     Primitive(Type),
-    Array { stride: Box<Layout>, count: usize },
+    Array { stride: Box<Layout> },
     Struct { fields: Vec<(u32, Layout)> },
 }
 
@@ -212,7 +212,6 @@ impl Layout {
             align: lt.align,
             fields: Fields::Array {
                 stride: Box::new(lt),
-                count: size,
             },
         }
     }
@@ -256,38 +255,17 @@ impl Layout {
 impl Type {
     pub fn size(&self) -> u32 {
         match self {
-            Type::Int64 => 8,
             Type::Bool => 1,
             Type::Ptr => 8,
-            Type::Int32 => 4,
-            Type::Int16 => 2,
             Type::Int8 => 1,
-            Type::UInt64 => 8,
-            Type::UInt32 => 4,
-            Type::UInt16 => 2,
-            Type::UInt8 => 1,
-            Type::Int128 => 16,
-            Type::UInt128 => 16,
-            Type::Float16 => 2,
-            Type::Float32 => 4,
-            Type::Float64 => 8,
-            Type::Float128 => 16,
-        }
-    }
-
-    pub fn align(&self) -> u32 {
-        match self {
+            Type::Int16 => 2,
+            Type::Int32 => 4,
             Type::Int64 => 8,
-            Type::Bool => 1,
-            Type::Ptr => 8,
-            Type::Int32 => 4,
-            Type::Int16 => 2,
-            Type::Int8 => 1,
-            Type::UInt64 => 8,
-            Type::UInt32 => 4,
-            Type::UInt16 => 2,
-            Type::UInt8 => 1,
             Type::Int128 => 16,
+            Type::UInt8 => 1,
+            Type::UInt16 => 2,
+            Type::UInt32 => 4,
+            Type::UInt64 => 8,
             Type::UInt128 => 16,
             Type::Float16 => 2,
             Type::Float32 => 4,
