@@ -1,0 +1,6 @@
+
+pub extern fn must_read() -> int;
+
+pub extern fn must_alloc(size: int) -> []mut int;
+
+pub extern fn must_print(x: int);
