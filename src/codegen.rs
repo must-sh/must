@@ -43,6 +43,9 @@ impl bytecode::Type {
 pub fn compile(prog: bytecode::Prog, print: bool) -> ObjectProduct {
     let mut settings_builder = settings::builder();
     settings_builder.set("opt_level", "speed").unwrap();
+    settings_builder
+        .set("enable_llvm_abi_extensions", "true")
+        .unwrap();
     let flags = settings::Flags::new(settings_builder);
     let isa = isa::lookup_by_name("x86_64-linux-elf")
         .unwrap()
@@ -151,7 +154,7 @@ impl Lowerer {
             let ss = b.create_sized_stack_slot(StackSlotData::new(
                 cranelift_codegen::ir::StackSlotKind::ExplicitSlot,
                 lt.size() as u32,
-                8,
+                lt.align().ilog2() as u8,
             ));
             variable_map.insert(id, ss);
         }
@@ -229,8 +232,8 @@ impl Lowerer {
                         stack.push(val);
                     }
                     bytecode::Inst::Store { offset } => {
-                        let val = stack.pop().unwrap();
                         let ptr = stack.pop().unwrap();
+                        let val = stack.pop().unwrap();
                         b.ins().store(MemFlags::new(), val, ptr, offset as i32);
                     }
                     bytecode::Inst::CapOffset => {
@@ -251,22 +254,26 @@ impl Lowerer {
                             let val = stack.pop().unwrap();
                             args.push(val);
                         }
+
+                        args.reverse();
+
                         let res = b.ins().call(f, &args);
                         for v in b.inst_results(res) {
                             stack.push(*v)
                         }
                     }
-                    bytecode::Inst::MemCopy { size } => {
+                    bytecode::Inst::MemCopy { size, align } => {
                         let src = stack.pop().unwrap();
                         let dest = stack.pop().unwrap();
                         let config = self.m.target_config();
+                        let align = align.ilog2() as u8;
                         b.emit_small_memory_copy(
                             config,
                             dest,
                             src,
                             size as u64,
-                            8,
-                            8,
+                            align,
+                            align,
                             true,
                             MemFlags::new(),
                         );
@@ -296,6 +303,7 @@ impl Lowerer {
                         let val = stack.pop().unwrap();
                         rets.push(val);
                     }
+                    rets.reverse();
                     b.ins().return_(&rets);
                 }
             };
