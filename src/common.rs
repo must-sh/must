@@ -1,7 +1,5 @@
 use std::fmt::Display;
 
-use crate::bytecode;
-
 #[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::Update)]
 pub enum Binop {
     // Arithmetic
@@ -22,11 +20,6 @@ pub enum Binop {
     // Boolean
     And,
     Or,
-}
-impl Binop {
-    pub(crate) fn ret_tp(&self) -> bytecode::Type {
-        todo!()
-    }
 }
 
 impl Display for Binop {
@@ -54,11 +47,6 @@ impl Display for Binop {
 pub enum Unop {
     Not,
     Neg,
-}
-impl Unop {
-    pub(crate) fn ret_tp(&self) -> bytecode::Type {
-        todo!()
-    }
 }
 
 impl Display for Unop {

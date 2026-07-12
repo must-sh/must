@@ -177,7 +177,7 @@ impl<'a> VM<'a> {
                     Inst::MemCopy { size, align: _ } => {
                         match (self.vstack.pop().unwrap(), self.vstack.pop().unwrap()) {
                             (Value::Ref(src), Value::Ref(dest)) => {
-                                self.memory.copy_within(src..(src + *size as usize), dest);
+                                self.memory.copy_within(src..(src + *size), dest);
                             }
                             _ => panic!(),
                         }
@@ -227,7 +227,7 @@ impl<'a> VM<'a> {
                     self.hp += n as usize;
                     let mut bytes = [0u8; 16];
                     bytes[0..8].copy_from_slice(&ptr.to_le_bytes());
-                    bytes[8..16].copy_from_slice(&(n as i64).to_le_bytes());
+                    bytes[8..16].copy_from_slice(&n.to_le_bytes());
                     self.vstack.push(Value::Int128(i128::from_le_bytes(bytes)));
                     Some(())
                 }

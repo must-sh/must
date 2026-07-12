@@ -5,7 +5,7 @@ use salsa::Database;
 use crate::{
     ast::{self, ExprData, ExprId, Ident, PatternData, PatternId},
     bytecode::{self, Block, Func, FuncSig, Inst, Terminator},
-    common::{Binop, Unop},
+    common::Binop,
     driver::type_check_func,
     resolve::{self, parse_type_expr},
     tp::{TypeData, TypeId, TypeInfo},
@@ -162,6 +162,7 @@ impl<'a> Builder<'a> {
 
     pub fn lower_place(&mut self, e: ExprId<'a>) -> Option<Place> {
         match e.data(self.db) {
+            ExprData::Error => panic!(),
             ExprData::Var(x) => Some(self.get_var(x)),
             ExprData::Field(expr, name) => {
                 let tp_struct = self.get_tp(expr);
@@ -170,37 +171,23 @@ impl<'a> Builder<'a> {
                 let src = place.add_offset(offset);
                 Some(src)
             }
-            ExprData::Error => panic!(),
-            ExprData::Number(_) => None,
-            ExprData::Bool(_) => None,
-            ExprData::Binop(binop, expr_id, expr_id1) => None,
-            ExprData::Unop(unop, expr_id) => None,
             ExprData::Let(pat, e1, e2) => {
                 let place = self.lower_into_tmp(e1);
                 let tp = self.get_tp(e1);
                 self.lower_pat(pat, tp, place);
                 self.lower_place(e2)
             }
-            ExprData::FnCall(ident, expr_ids) => None,
-            ExprData::If(expr_id, expr_id1, expr_id2) => None,
-            ExprData::While(expr_id, expr_id1) => None,
-            ExprData::Assign(expr_id, expr_id1) => None,
             ExprData::Deref(expr) => {
-                let layout = self.get_layout_of_expr(e);
                 let id = self.lower_into_tmp(expr).as_local_id().unwrap();
                 Some(Place::Ref {
                     local_id: id,
                     offset: 0,
                 })
             }
-            ExprData::AddressOf(expr_id) => None,
-            ExprData::Tuple(expr_ids) => None,
             ExprData::Seq(e1, e2) => {
                 self.lower_into_tmp(e1);
                 self.lower_place(e2)
             }
-            ExprData::Struct(ident, items) => None,
-            ExprData::Array(expr_ids) => None,
             ExprData::Index(e1, e2) => match self.get_tp(e2).data(self.db) {
                 TypeData::Int => {
                     let elem_layout = match self.get_tp(e1).data(self.db) {
@@ -228,7 +215,7 @@ impl<'a> Builder<'a> {
                 TypeData::Range => None,
                 _ => panic!(),
             },
-            ExprData::Range(expr_id, expr_id1) => None,
+            _ => None,
         }
     }
 
@@ -323,8 +310,6 @@ impl<'a> Builder<'a> {
                 self.switch_to_block(next_block);
             }
             ExprData::While(cond, body) => {
-                let layout = &self.get_layout_of_expr(e);
-
                 let cond_block = self.new_block();
                 let body_block = self.new_block();
                 let next_block = self.new_block();
@@ -351,15 +336,9 @@ impl<'a> Builder<'a> {
             }
             ExprData::Deref(expr) => {
                 let layout = self.get_layout_of_expr(e);
-                let id = self.lower_into_tmp(expr).as_local_id().unwrap();
-                Place::Ref {
-                    local_id: id,
-                    offset: 0,
-                }
-                .copy_to(self, dest, &layout);
+                self.lower_place(expr).unwrap().copy_to(self, dest, &layout);
             }
             ExprData::AddressOf(e) => {
-                let tp = self.get_tp(e);
                 self.lower_place(e)
                     .unwrap_or_else(|| self.lower_into_tmp(e))
                     .leave_addr(self);
@@ -396,11 +375,11 @@ impl<'a> Builder<'a> {
                     _ => panic!(),
                 };
                 for (i, name) in fields.into_iter() {
-                    let e = exprs_map.remove(&name).unwrap();
+                    let e = exprs_map.remove(name).unwrap();
                     self.lower(e, dest.add_offset(offsets[*i].0));
                 }
             }
-            ExprData::Field(expr, ident) => {
+            ExprData::Field(_, _) => {
                 let layout = &self.get_layout_of_expr(e);
                 let src = self.lower_place(e).unwrap();
                 src.copy_to(self, dest, layout);
@@ -408,7 +387,7 @@ impl<'a> Builder<'a> {
             ExprData::Array(exprs) => {
                 let mut x = 0;
                 let elem_size = match self.get_layout_of_expr(e).fields {
-                    bytecode::Fields::Array { stride, count } => stride.size(),
+                    bytecode::Fields::Array { stride, .. } => stride.size(),
                     _ => panic!(),
                 };
                 for e in exprs {
@@ -568,11 +547,11 @@ impl<'a> Builder<'a> {
     fn store_ptr(&mut self) -> Place {
         let tmp = self.new_tmp_var_layout(bytecode::Layout::ptr());
         tmp.store(self);
-        let place = Place::Ref {
+        
+        Place::Ref {
             local_id: tmp.as_local_id().unwrap(),
             offset: 0,
-        };
-        place
+        }
     }
 
     pub fn new_var(&mut self, x: Ident<'a>, tp: TypeId<'a>) -> Place {

@@ -68,15 +68,15 @@ pub fn compile(prog: bytecode::Prog, print: bool) -> ObjectProduct {
     }
 
     for (name, sig) in &prog.externs {
-        lowerer.declare_fn(name.clone(), &sig, Linkage::Import);
+        lowerer.declare_fn(name.clone(), sig, Linkage::Import);
     }
 
     for (name, f) in prog.funcs {
         lowerer.define_fn(name, f);
     }
 
-    let obj = lowerer.finish();
-    obj
+    
+    lowerer.finish()
 }
 
 struct Lowerer {
@@ -247,7 +247,7 @@ impl Lowerer {
                     }
                     bytecode::Inst::Call(name) => {
                         let func_id = self.get_func_id(&name);
-                        let f = self.m.declare_func_in_func(func_id, &mut b.func);
+                        let f = self.m.declare_func_in_func(func_id, b.func);
                         let n = self.get_func_sig(func_id).params.len();
                         let mut args = vec![];
                         for _ in 0..n {
