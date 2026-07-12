@@ -153,8 +153,8 @@ impl<'a> VM<'a> {
                         }
                     }
                     Inst::Store { offset } => {
-                        let val = self.vstack.pop().unwrap();
                         if let Value::Ref(mut ptr) = self.vstack.pop().unwrap() {
+                            let val = self.vstack.pop().unwrap();
                             for b in val.as_bytes() {
                                 self.memory[ptr + *offset as usize] = b;
                                 ptr += 1;
@@ -174,7 +174,7 @@ impl<'a> VM<'a> {
                             (x, y) => panic!("in {}, {:?} {:?}", name, x, y),
                         }
                     }
-                    Inst::MemCopy { size } => {
+                    Inst::MemCopy { size, align: _ } => {
                         match (self.vstack.pop().unwrap(), self.vstack.pop().unwrap()) {
                             (Value::Ref(src), Value::Ref(dest)) => {
                                 self.memory.copy_within(src..(src + *size as usize), dest);
@@ -225,8 +225,10 @@ impl<'a> VM<'a> {
                 Value::Int64(n) => {
                     let ptr = self.hp;
                     self.hp += n as usize;
-                    self.vstack.push(Value::Ref(ptr));
-                    self.vstack.push(Value::Int64(n));
+                    let mut bytes = [0u8; 16];
+                    bytes[0..8].copy_from_slice(&ptr.to_le_bytes());
+                    bytes[8..16].copy_from_slice(&(n as i64).to_le_bytes());
+                    self.vstack.push(Value::Int128(i128::from_le_bytes(bytes)));
                     Some(())
                 }
                 x => panic!("{:?}", x),

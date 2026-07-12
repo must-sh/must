@@ -14,12 +14,12 @@ pub enum Inst {
     Get { id: usize, offset: u32, tp: Type },
     LocalAddr { id: usize, offset: u32 },
 
-    // VALUE ON TOP, PTR SECOND
+    // PTR ON TOP, VALUE SECOND
     Load { offset: u32, tp: Type },
     Store { offset: u32 },
 
     // SRC ON TOP, DST SECOND
-    MemCopy { size: usize },
+    MemCopy { size: usize, align: u32 },
 
     // OFFSET FIRST, PTR SECOND
     CapOffset,
@@ -46,7 +46,7 @@ impl Display for Inst {
             Inst::Drop => write!(f, "drop"),
             Inst::Dup => write!(f, "dup"),
             Inst::Call(name) => write!(f, "call {name:?}"),
-            Inst::MemCopy { size } => write!(f, "memcpy {size}"),
+            Inst::MemCopy { size, align } => write!(f, "memcpy {size}, {align}"),
         }
     }
 }

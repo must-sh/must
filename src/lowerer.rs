@@ -13,8 +13,15 @@ use crate::{
 
 #[derive(Debug, Clone, Copy)]
 pub enum Place {
-    Local { id: usize, offset: u32 },
-    Ref { offset: u32 },
+    Local {
+        id: usize,
+        offset: u32,
+    },
+    /// `id` is a local variable containing the base pointer.
+    Ref {
+        local_id: usize,
+        offset: u32,
+    },
 }
 
 impl Place {
@@ -27,7 +34,10 @@ impl Place {
                 id,
                 offset: offset + x,
             },
-            Place::Ref { offset } => Place::Ref { offset: offset + x },
+            Place::Ref { local_id, offset } => Place::Ref {
+                local_id,
+                offset: offset + x,
+            },
         }
     }
 
@@ -37,7 +47,12 @@ impl Place {
             Place::Local { id, offset } => {
                 b.push_inst(Inst::Get { id, offset, tp });
             }
-            Place::Ref { offset } => {
+            Place::Ref { local_id, offset } => {
+                b.push_inst(Inst::Get {
+                    id: local_id,
+                    offset: 0,
+                    tp: bytecode::Type::Ptr,
+                });
                 b.push_inst(Inst::Load { offset, tp });
             }
         }
@@ -49,7 +64,12 @@ impl Place {
             Place::Local { id, offset } => {
                 b.push_inst(Inst::Set { id, offset });
             }
-            Place::Ref { offset } => {
+            Place::Ref { local_id, offset } => {
+                b.push_inst(Inst::Get {
+                    id: local_id,
+                    offset: 0,
+                    tp: bytecode::Type::Ptr,
+                });
                 b.push_inst(Inst::Store { offset });
             }
         }
@@ -58,7 +78,12 @@ impl Place {
     pub fn leave_addr(self, b: &mut Builder) {
         match self {
             Place::Local { id, offset } => b.push_inst(Inst::LocalAddr { id, offset }),
-            Place::Ref { offset } => {
+            Place::Ref { local_id, offset } => {
+                b.push_inst(Inst::Get {
+                    id: local_id,
+                    offset: 0,
+                    tp: bytecode::Type::Ptr,
+                });
                 b.push_inst(Inst::PushInt(offset as i64));
                 b.push_inst(Inst::CapOffset)
             }
@@ -71,7 +96,15 @@ impl Place {
         self.leave_addr(b);
 
         let size = layout.size();
-        b.push_inst(Inst::MemCopy { size });
+        let align = layout.align();
+        b.push_inst(Inst::MemCopy { size, align });
+    }
+
+    fn as_local_id(self) -> Option<usize> {
+        match self {
+            Place::Local { id, .. } => Some(id),
+            Place::Ref { .. } => None,
+        }
     }
 }
 
@@ -138,21 +171,36 @@ impl<'a> Builder<'a> {
                 Some(src)
             }
             ExprData::Error => panic!(),
-            ExprData::Number(_) => todo!(),
-            ExprData::Bool(_) => todo!(),
-            ExprData::Binop(binop, expr_id, expr_id1) => todo!(),
-            ExprData::Unop(unop, expr_id) => todo!(),
-            ExprData::Let(pattern_id, expr_id, expr_id1) => todo!(),
-            ExprData::FnCall(ident, expr_ids) => todo!(),
-            ExprData::If(expr_id, expr_id1, expr_id2) => todo!(),
-            ExprData::While(expr_id, expr_id1) => todo!(),
-            ExprData::Assign(expr_id, expr_id1) => todo!(),
-            ExprData::Deref(expr_id) => todo!(),
-            ExprData::AddressOf(expr_id) => todo!(),
-            ExprData::Tuple(expr_ids) => todo!(),
-            ExprData::Seq(expr_id, expr_id1) => todo!(),
-            ExprData::Struct(ident, items) => todo!(),
-            ExprData::Array(expr_ids) => todo!(),
+            ExprData::Number(_) => None,
+            ExprData::Bool(_) => None,
+            ExprData::Binop(binop, expr_id, expr_id1) => None,
+            ExprData::Unop(unop, expr_id) => None,
+            ExprData::Let(pat, e1, e2) => {
+                let place = self.lower_into_tmp(e1);
+                let tp = self.get_tp(e1);
+                self.lower_pat(pat, tp, place);
+                self.lower_place(e2)
+            }
+            ExprData::FnCall(ident, expr_ids) => None,
+            ExprData::If(expr_id, expr_id1, expr_id2) => None,
+            ExprData::While(expr_id, expr_id1) => None,
+            ExprData::Assign(expr_id, expr_id1) => None,
+            ExprData::Deref(expr) => {
+                let layout = self.get_layout_of_expr(e);
+                let id = self.lower_into_tmp(expr).as_local_id().unwrap();
+                Some(Place::Ref {
+                    local_id: id,
+                    offset: 0,
+                })
+            }
+            ExprData::AddressOf(expr_id) => None,
+            ExprData::Tuple(expr_ids) => None,
+            ExprData::Seq(e1, e2) => {
+                self.lower_into_tmp(e1);
+                self.lower_place(e2)
+            }
+            ExprData::Struct(ident, items) => None,
+            ExprData::Array(expr_ids) => None,
             ExprData::Index(e1, e2) => match self.get_tp(e2).data(self.db) {
                 TypeData::Int => {
                     let elem_layout = match self.get_tp(e1).data(self.db) {
@@ -174,12 +222,13 @@ impl<'a> Builder<'a> {
                     self.push_inst(Inst::Binop(Binop::Mul));
 
                     self.push_inst(Inst::CapOffset);
-                    Some(Place::Ref { offset: 0 })
+                    let place = self.store_ptr();
+                    Some(place)
                 }
                 TypeData::Range => None,
                 _ => panic!(),
             },
-            ExprData::Range(expr_id, expr_id1) => todo!(),
+            ExprData::Range(expr_id, expr_id1) => None,
         }
     }
 
@@ -215,7 +264,7 @@ impl<'a> Builder<'a> {
             ExprData::Let(pat, e1, e2) => {
                 let place = self.lower_into_tmp(e1);
                 let tp = self.get_tp(e1);
-                self.lower_pat(pat, tp, &place);
+                self.lower_pat(pat, tp, place);
                 self.lower(e2, dest)
             }
             ExprData::Var(x) => {
@@ -302,8 +351,12 @@ impl<'a> Builder<'a> {
             }
             ExprData::Deref(expr) => {
                 let layout = self.get_layout_of_expr(e);
-                self.lower_into_tmp(expr).load(self, bytecode::Type::Ptr);
-                Place::Ref { offset: 0 }.copy_to(self, dest, &layout);
+                let id = self.lower_into_tmp(expr).as_local_id().unwrap();
+                Place::Ref {
+                    local_id: id,
+                    offset: 0,
+                }
+                .copy_to(self, dest, &layout);
             }
             ExprData::AddressOf(e) => {
                 let tp = self.get_tp(e);
@@ -313,14 +366,12 @@ impl<'a> Builder<'a> {
                 dest.store(self);
             }
             ExprData::Tuple(exprs) => {
-                let mut x = 0;
                 let fields = match self.get_layout_of_expr(e).fields {
                     bytecode::Fields::Struct { fields } => fields,
                     _ => panic!(),
                 };
                 for (i, e) in exprs.into_iter().enumerate() {
-                    self.lower(e, dest.add_offset(x));
-                    x += fields[i].0;
+                    self.lower(e, dest.add_offset(fields[i].0));
                 }
             }
             ExprData::Bool(b) => {
@@ -344,12 +395,9 @@ impl<'a> Builder<'a> {
                     bytecode::Fields::Struct { fields } => fields,
                     _ => panic!(),
                 };
-                let mut x = 0;
                 for (i, name) in fields.into_iter() {
                     let e = exprs_map.remove(&name).unwrap();
-                    let layout = self.get_layout_of_expr(e);
-                    self.lower(e, dest.add_offset(x));
-                    x += offsets[*i].0;
+                    self.lower(e, dest.add_offset(offsets[*i].0));
                 }
             }
             ExprData::Field(expr, ident) => {
@@ -390,7 +438,10 @@ impl<'a> Builder<'a> {
                 self.push_inst(Inst::CapOffset);
 
                 match self.get_tp(e2).data(self.db) {
-                    TypeData::Int => Place::Ref { offset: 0 }.copy_to(self, dest, &elem_layout),
+                    TypeData::Int => {
+                        let place = self.store_ptr();
+                        place.copy_to(self, dest, &elem_layout)
+                    }
                     TypeData::Range => {
                         dest.store(self);
                         idx_place.add_offset(8).load(self, bytecode::Type::Int64); // end
@@ -426,7 +477,7 @@ impl<'a> Builder<'a> {
         }
     }
 
-    pub fn lower_pat(&mut self, pat: PatternId<'a>, tp: TypeId<'a>, place: &Place) {
+    pub fn lower_pat(&mut self, pat: PatternId<'a>, tp: TypeId<'a>, place: Place) {
         match pat.data(self.db) {
             PatternData::Wildcard => (),
             PatternData::Var(name, _) => {
@@ -469,9 +520,12 @@ impl<'a> Builder<'a> {
                 bytecode::Abi::Scalar(_) => {
                     let tmp = self.new_tmp_var(tp);
                     tmp.store(&mut self);
-                    self.lower_pat(arg, tp, &tmp)
+                    self.lower_pat(arg, tp, tmp)
                 }
-                bytecode::Abi::Struct => self.lower_pat(arg, tp, &Place::Ref { offset: 0 }),
+                bytecode::Abi::Struct => {
+                    let place = self.store_ptr();
+                    self.lower_pat(arg, tp, place)
+                }
             }
             args.push(layout);
         }
@@ -484,6 +538,7 @@ impl<'a> Builder<'a> {
         };
 
         rets.push(layout.clone());
+        args.reverse();
         let sig = FuncSig { args, rets };
 
         if let Some(body) = self.func.body(self.db) {
@@ -495,7 +550,8 @@ impl<'a> Builder<'a> {
                     self.lower_into_tmp(body).load(&mut self, tp);
                 }
                 bytecode::Abi::Struct => {
-                    self.lower(body, Place::Ref { offset: 0 });
+                    let place = self.store_ptr();
+                    self.lower(body, place);
                 }
             };
 
@@ -509,6 +565,16 @@ impl<'a> Builder<'a> {
         }
     }
 
+    fn store_ptr(&mut self) -> Place {
+        let tmp = self.new_tmp_var_layout(bytecode::Layout::ptr());
+        tmp.store(self);
+        let place = Place::Ref {
+            local_id: tmp.as_local_id().unwrap(),
+            offset: 0,
+        };
+        place
+    }
+
     pub fn new_var(&mut self, x: Ident<'a>, tp: TypeId<'a>) -> Place {
         let id = self.new_tmp_var(tp);
         self.variable_map.insert(x, id);
@@ -518,6 +584,12 @@ impl<'a> Builder<'a> {
     pub fn new_tmp_var(&mut self, tp: TypeId<'a>) -> Place {
         let id = self.variables.len();
         let layout = self.get_layout_of_type(tp);
+        self.variables.push(layout);
+        Place::Local { id, offset: 0 }
+    }
+
+    pub fn new_tmp_var_layout(&mut self, layout: bytecode::Layout) -> Place {
+        let id = self.variables.len();
         self.variables.push(layout);
         Place::Local { id, offset: 0 }
     }
