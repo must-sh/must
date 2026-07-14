@@ -144,6 +144,14 @@ impl Diagnostic {
         )
     }
 
+    pub fn not_a_function(db: &dyn Database, span: Span) -> Self {
+        Diagnostic::error(
+            db,
+            span,
+            "this expression is not a function and cannot be called".to_string(),
+        )
+    }
+
     pub fn cannot_assign(db: &dyn Database, span: Span) -> Self {
         Diagnostic::error(db, span, "this expression cannot be mutated".to_string())
     }
@@ -305,11 +313,12 @@ impl<'a> Env<'a> {
                     (TypeData::Error.wrap(db), true)
                 }
             },
-            ExprData::FnCall(fn_name, exprs) => {
-                let sig = match self.mod_defs.function_map.get(&fn_name) {
-                    Some(sig) => sig.clone(),
-                    None => {
-                        Diagnostic::unbound_var(db, e.span(db), fn_name).accumulate(db);
+            ExprData::FnCall(fn_expr, exprs) => {
+                let (tp, _) = self.infer_expr(fn_expr);
+                let sig = match tp.data(db) {
+                    TypeData::Fn(sig) => sig,
+                    _ => {
+                        Diagnostic::not_a_function(db, fn_expr.span(db)).accumulate(db);
                         return (TypeData::Error.wrap(db), true);
                     }
                 };
@@ -538,13 +547,7 @@ impl<'a> Env<'a> {
         match pat.data(self.db) {
             PatternData::Wildcard => vec![],
             PatternData::Var(name, is_mut) => {
-                vec![(
-                    name,
-                    VarBinding {
-                        tp,
-                        is_mut,
-                    },
-                )]
+                vec![(name, VarBinding { tp, is_mut })]
             }
             PatternData::Tuple(pats) => {
                 if let TypeData::Tuple(tps) = tp.data(self.db)

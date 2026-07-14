@@ -75,7 +75,6 @@ pub fn compile(prog: bytecode::Prog, print: bool) -> ObjectProduct {
         lowerer.define_fn(name, f);
     }
 
-    
     lowerer.finish()
 }
 
@@ -101,6 +100,13 @@ impl Lowerer {
     }
 
     fn declare_fn(&mut self, name: String, f: &bytecode::FuncSig, linkage: Linkage) {
+        let sig = self.make_sig(f);
+        let id = self.m.declare_function(&name, linkage, &sig).unwrap();
+        self.fn_map.insert(name, id);
+        self.fn_sigs.insert(id, sig);
+    }
+
+    fn make_sig(&mut self, f: &bytecode::FuncSig) -> Signature {
         let mut sig = self.m.make_signature();
         for ret in &f.rets {
             match ret.abi() {
@@ -121,9 +127,7 @@ impl Lowerer {
                 bytecode::Abi::Unit => (),
             };
         }
-        let id = self.m.declare_function(&name, linkage, &sig).unwrap();
-        self.fn_map.insert(name, id);
-        self.fn_sigs.insert(id, sig);
+        sig
     }
 
     fn define_fn(&mut self, name: String, f: bytecode::Func) {
@@ -281,6 +285,30 @@ impl Lowerer {
                     bytecode::Inst::Dup => {
                         let v = stack.last().unwrap();
                         stack.push(*v);
+                    }
+                    bytecode::Inst::CallDynamic(sig) => {
+                        let sig = self.make_sig(&sig);
+                        let f = stack.pop().unwrap();
+                        let n = sig.params.len();
+                        let sig_ref = b.import_signature(sig);
+                        let mut args = vec![];
+                        for _ in 0..n {
+                            let val = stack.pop().unwrap();
+                            args.push(val);
+                        }
+
+                        args.reverse();
+
+                        let res = b.ins().call_indirect(sig_ref, f, &args);
+                        for v in b.inst_results(res) {
+                            stack.push(*v)
+                        }
+                    }
+                    bytecode::Inst::FnAddr(name) => {
+                        let func_id = self.get_func_id(&name);
+                        let f = self.m.declare_func_in_func(func_id, b.func);
+                        let v = b.ins().func_addr(types::I64, f);
+                        stack.push(v)
                     }
                 };
             }

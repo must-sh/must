@@ -28,6 +28,8 @@ pub enum Inst {
     Dup,
 
     Call(String),
+    CallDynamic(FuncSig),
+    FnAddr(String),
 }
 
 impl Display for Inst {
@@ -47,6 +49,8 @@ impl Display for Inst {
             Inst::Dup => write!(f, "dup"),
             Inst::Call(name) => write!(f, "call {name:?}"),
             Inst::MemCopy { size, align } => write!(f, "memcpy {size}, {align}"),
+            Inst::CallDynamic(_) => write!(f, "calldyn"),
+            Inst::FnAddr(name) => write!(f, "fnaddr {name:?}"),
         }
     }
 }
