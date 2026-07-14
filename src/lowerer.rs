@@ -8,7 +8,7 @@ use crate::{
     common::Binop,
     driver::type_check_func,
     resolve::{self, parse_type_expr},
-    tp::{TypeData, TypeId, TypeInfo},
+    tp::{FnSig, TypeData, TypeId, TypeInfo},
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -259,7 +259,7 @@ impl<'a> Builder<'a> {
                 let src = self.get_var(x);
                 src.copy_to(self, dest, &layout);
             }
-            ExprData::FnCall(name, args) => {
+            ExprData::FnCall(expr, args) => {
                 match self.get_layout_of_expr(e).abi() {
                     bytecode::Abi::Unit | bytecode::Abi::Scalar(_) => (),
                     bytecode::Abi::Struct => {
@@ -281,7 +281,15 @@ impl<'a> Builder<'a> {
                     }
                 }
 
-                self.push_inst(Inst::Call(name.text(self.db).clone()));
+                self.lower_place(expr).unwrap().leave_addr(self);
+
+                let sig = match self.get_tp(expr).data(self.db) {
+                    TypeData::Fn(sig) => self.make_sig(sig),
+                    _ => panic!(),
+                };
+
+                self.push_inst(Inst::CallDynamic(sig));
+
                 match self.get_layout_of_expr(e).abi() {
                     bytecode::Abi::Unit => (),
                     bytecode::Abi::Scalar(_) => dest.store(self),
@@ -547,7 +555,7 @@ impl<'a> Builder<'a> {
     fn store_ptr(&mut self) -> Place {
         let tmp = self.new_tmp_var_layout(bytecode::Layout::ptr());
         tmp.store(self);
-        
+
         Place::Ref {
             local_id: tmp.as_local_id().unwrap(),
             offset: 0,
@@ -573,12 +581,34 @@ impl<'a> Builder<'a> {
         Place::Local { id, offset: 0 }
     }
 
-    pub fn get_var(&self, x: Ident<'a>) -> Place {
-        *self.variable_map.get(&x).unwrap()
+    pub fn get_var(&mut self, x: Ident<'a>) -> Place {
+        match self.variable_map.get(&x) {
+            Some(place) => *place,
+            None => {
+                self.push_inst(Inst::FnAddr(x.text(self.db).clone()));
+                self.store_ptr()
+            }
+        }
     }
 
     fn terminate_current_block(&mut self, term: Terminator) {
         self.blocks[self.current_block].terminator = term;
+    }
+
+    fn make_sig(&self, sig: FnSig) -> FuncSig {
+        let mut args = vec![];
+        let mut rets = vec![];
+
+        for tp in sig.args {
+            let layout = self.get_layout_of_type(tp);
+            args.push(layout);
+        }
+
+        let layout = self.get_layout_of_type(sig.ret);
+
+        rets.push(layout.clone());
+        args.reverse();
+        FuncSig { args, rets }
     }
 }
 
