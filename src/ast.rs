@@ -55,7 +55,7 @@ pub enum ExprData<'db> {
     Unop(Unop, ExprId<'db>),
     Let(PatternId<'db>, ExprId<'db>, ExprId<'db>),
     Var(Ident<'db>),
-    FnCall(Ident<'db>, Vec<ExprId<'db>>),
+    FnCall(ExprId<'db>, Vec<ExprId<'db>>),
     If(ExprId<'db>, ExprId<'db>, Option<ExprId<'db>>),
     While(ExprId<'db>, ExprId<'db>),
     Assign(ExprId<'db>, ExprId<'db>),

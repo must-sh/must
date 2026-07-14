@@ -186,6 +186,8 @@ impl<'a> VM<'a> {
                         let v = self.vstack.last().unwrap();
                         self.vstack.push(*v);
                     }
+                    Inst::CallDynamic(_) => todo!(),
+                    Inst::FnAddr(_) => todo!(),
                 }
             }
 
