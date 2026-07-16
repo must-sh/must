@@ -3,12 +3,12 @@ use std::collections::HashMap;
 use salsa::Database;
 
 use crate::{
-    ast::{self, ExprData, ExprId, Ident, PatternData, PatternId},
+    ast::{self, ExprData, ExprId, Ident, Path, PatternData, PatternId, Span},
     bytecode::{self, Block, Func, FuncSig, Inst, Terminator},
     common::Binop,
     driver::type_check_func,
-    resolve::{self, parse_type_expr},
-    tp::{FnSig, TypeData, TypeId, TypeInfo},
+    resolve::{self, Item, parse_type_expr},
+    tp::{FnSig, TypeData, TypeId},
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -138,19 +138,8 @@ impl<'a> Builder<'a> {
         *tp_map.get(&e).unwrap()
     }
 
-    pub fn get_type_info(&self, id: usize) -> TypeInfo<'a> {
-        let tp_map = resolve::get_defs(self.db, self.func.sf(self.db)).type_map;
-        tp_map.get(&id).unwrap().clone()
-    }
-
     pub fn get_layout_of_expr(&self, e: ExprId<'a>) -> bytecode::Layout {
-        let tp_map = resolve::get_defs(self.db, self.func.sf(self.db)).type_map;
-        self.get_tp(e).layout(&tp_map, self.db)
-    }
-
-    pub fn get_layout_of_type(&self, tp: TypeId) -> bytecode::Layout {
-        let tp_map = resolve::get_defs(self.db, self.func.sf(self.db)).type_map;
-        tp.layout(&tp_map, self.db)
+        self.get_tp(e).layout(self.db)
     }
 
     pub fn lower_into_tmp(&mut self, e: ExprId<'a>) -> Place {
@@ -193,11 +182,17 @@ impl<'a> Builder<'a> {
                     let elem_layout = match self.get_tp(e1).data(self.db) {
                         TypeData::Slice(tp, _) => {
                             self.lower_into_tmp(e1).load(self, bytecode::Type::Ptr);
-                            self.get_layout_of_type(tp)
+                            {
+                                let this = &self;
+                                tp.layout(this.db)
+                            }
                         }
                         TypeData::Array(_, tp) => {
                             self.lower_place(e1).unwrap().leave_addr(self);
-                            self.get_layout_of_type(tp)
+                            {
+                                let this = &self;
+                                tp.layout(this.db)
+                            }
                         }
                         _ => panic!(),
                     };
@@ -370,9 +365,12 @@ impl<'a> Builder<'a> {
                 self.lower(e2, dest)
             }
             ExprData::Struct(name, exprs) => {
-                let info = self.get_type_info(name.get_id());
-                let mut fields = info
-                    .fields
+                let s = self.func.sf(self.db);
+                let fields = match resolve::get_item(self.db, s, name) {
+                    Item::Type { fields, .. } => fields,
+                    _ => panic!(),
+                };
+                let mut fields = fields
                     .iter()
                     .map(|(name, (id, _))| (id, name))
                     .collect::<Vec<_>>();
@@ -407,11 +405,11 @@ impl<'a> Builder<'a> {
                 let elem_layout = match self.get_tp(e1).data(self.db) {
                     TypeData::Slice(tp, _) => {
                         self.lower_into_tmp(e1).load(self, bytecode::Type::Ptr);
-                        self.get_layout_of_type(tp)
+                        tp.layout(self.db)
                     }
                     TypeData::Array(_, tp) => {
                         self.lower_place(e1).unwrap().leave_addr(self);
-                        self.get_layout_of_type(tp)
+                        tp.layout(self.db)
                     }
                     _ => panic!(),
                 };
@@ -453,10 +451,19 @@ impl<'a> Builder<'a> {
                 8
             }
             TypeData::Var(id) => {
-                let field_id = self.get_type_info(id).fields.get(&field_name).unwrap().0;
-                let layout = self.get_layout_of_type(tp);
-                match layout.fields {
-                    bytecode::Fields::Struct { fields } => fields[field_id].0,
+                match resolve::get_item(
+                    self.db,
+                    id.sf,
+                    Path::new(self.db, vec![(id.name, Span::nowhere(self.db))]),
+                ) {
+                    Item::Type { fields, .. } => {
+                        let field_id = fields.get(&field_name).unwrap().0;
+                        let layout = tp.layout(self.db);
+                        match layout.fields {
+                            bytecode::Fields::Struct { fields } => fields[field_id].0,
+                            _ => panic!(),
+                        }
+                    }
                     _ => panic!(),
                 }
             }
@@ -468,7 +475,10 @@ impl<'a> Builder<'a> {
         match pat.data(self.db) {
             PatternData::Wildcard => (),
             PatternData::Var(name, _) => {
-                let layout = self.get_layout_of_type(tp);
+                let layout = {
+                    let this = &self;
+                    tp.layout(this.db)
+                };
                 let id = self.new_var(name, tp);
                 place.copy_to(self, id, &layout);
             }
@@ -499,8 +509,11 @@ impl<'a> Builder<'a> {
         let mut rets = vec![];
 
         for (arg, tp) in self.func.args(self.db).into_iter().rev() {
-            let tp = parse_type_expr(self.db, tp);
-            let layout = self.get_layout_of_type(tp);
+            let tp = parse_type_expr(self.db, tp, self.func.sf(self.db));
+            let layout = {
+                let this = &self;
+                tp.layout(this.db)
+            };
             // if its extern, we can lower but whatever, they will be freed anyways
             match layout.abi() {
                 bytecode::Abi::Unit => (),
@@ -518,8 +531,11 @@ impl<'a> Builder<'a> {
         }
 
         let layout = if let Some(tp) = self.func.ret(self.db) {
-            let tp = parse_type_expr(self.db, tp);
-            self.get_layout_of_type(tp)
+            let tp = parse_type_expr(self.db, tp, self.func.sf(self.db));
+            {
+                let this = &self;
+                tp.layout(this.db)
+            }
         } else {
             bytecode::Layout::unit()
         };
@@ -570,7 +586,10 @@ impl<'a> Builder<'a> {
 
     pub fn new_tmp_var(&mut self, tp: TypeId<'a>) -> Place {
         let id = self.variables.len();
-        let layout = self.get_layout_of_type(tp);
+        let layout = {
+            let this = &self;
+            tp.layout(this.db)
+        };
         self.variables.push(layout);
         Place::Local { id, offset: 0 }
     }
@@ -581,12 +600,18 @@ impl<'a> Builder<'a> {
         Place::Local { id, offset: 0 }
     }
 
-    pub fn get_var(&mut self, x: Ident<'a>) -> Place {
-        match self.variable_map.get(&x) {
-            Some(place) => *place,
-            None => {
-                self.push_inst(Inst::FnAddr(x.text(self.db).clone()));
-                self.store_ptr()
+    pub fn get_var(&mut self, x: Path<'a>) -> Place {
+        if let [(id, _)] = x.data(self.db)[..]
+            && let Some(place) = self.variable_map.get(&id)
+        {
+            *place
+        } else {
+            match resolve::get_item(self.db, self.func.sf(self.db), x) {
+                Item::Function { full_name, .. } => {
+                    self.push_inst(Inst::FnAddr(full_name));
+                    self.store_ptr()
+                }
+                _ => panic!(),
             }
         }
     }
@@ -600,11 +625,18 @@ impl<'a> Builder<'a> {
         let mut rets = vec![];
 
         for tp in sig.args {
-            let layout = self.get_layout_of_type(tp);
+            let layout = {
+                let this = &self;
+                tp.layout(this.db)
+            };
             args.push(layout);
         }
 
-        let layout = self.get_layout_of_type(sig.ret);
+        let layout = {
+            let this = &self;
+            let tp = sig.ret;
+            tp.layout(this.db)
+        };
 
         rets.push(layout.clone());
         args.reverse();

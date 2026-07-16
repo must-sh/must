@@ -3,7 +3,11 @@ use std::{fs::read_to_string, process::exit};
 use clap::Parser;
 use salsa::DatabaseImpl;
 
-use crate::{diagnostic::Diagnostic, input::Source, vm::VM};
+use crate::{
+    diagnostic::Diagnostic,
+    input::{Crate, Source, get_source},
+    vm::VM,
+};
 
 mod ast;
 mod bytecode;
@@ -67,19 +71,20 @@ fn main() {
     }
 }
 
-fn check_and_compile(db: &DatabaseImpl, file_name: String) -> bytecode::Prog {
-    let text = read_to_string(&file_name).expect("couldnt open file");
-    let sf = Source::new(db, text.clone());
-    driver::type_check_file(db, sf);
-    let diags = driver::type_check_file::accumulated::<Diagnostic>(db, sf);
+fn check_and_compile(db: &DatabaseImpl, root_dir: String) -> bytecode::Prog {
+    let c = Crate::new(db, root_dir.clone().into());
+    driver::type_check(db, c);
+    let diags = driver::type_check::accumulated::<Diagnostic>(db, c);
     for diag in &diags {
-        diag.as_ariadne_report(&file_name)
-            .eprint((&file_name, ariadne::Source::from(&text)))
+        let sf = diag.source;
+        let file_name = &sf.file_name(db).to_str().unwrap().to_string();
+        diag.as_ariadne_report(file_name)
+            .eprint((file_name, ariadne::Source::from(&sf.text(db))))
             .unwrap();
     }
     if !diags.is_empty() {
         eprintln!("errors occured, compilation aborted");
         exit(-1);
     }
-    driver::compile(db, sf)
+    driver::compile(db, c)
 }
