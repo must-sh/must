@@ -1,13 +1,9 @@
-use std::{fs::read_to_string, process::exit};
+use std::process::exit;
 
 use clap::Parser;
 use salsa::DatabaseImpl;
 
-use crate::{
-    diagnostic::Diagnostic,
-    input::{Crate, Source, get_source},
-    vm::VM,
-};
+use crate::{diagnostic::Diagnostic, vm::VM};
 
 mod ast;
 mod bytecode;
@@ -24,16 +20,24 @@ mod vm;
 lalrpop_util::lalrpop_mod!(parser);
 
 #[derive(clap::Parser)]
-enum Cli {
-    /// Run a file.
-    Run { file_name: String },
-    /// Compile a file.
-    Compile { file_name: String },
-    /// Print intermediate representation.
-    Print { ir: Ir, file_name: String },
+struct Cli {
+    #[command(subcommand)]
+    cmd: Command,
+    #[arg(long)]
+    path: Option<String>,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, clap::ValueEnum)]
+#[derive(Debug, Clone, clap::Subcommand)]
+enum Command {
+    /// Run a file.
+    Run,
+    /// Compile a file.
+    Compile,
+    /// Print intermediate representation.
+    Print { ir: Ir },
+}
+
+#[derive(Copy, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, clap::ValueEnum)]
 enum Ir {
     Cranelift,
     Bytecode,
@@ -42,23 +46,28 @@ enum Ir {
 fn main() {
     let cli = Cli::parse();
     let db = &DatabaseImpl::new();
-    match cli {
-        Cli::Run { file_name } => {
-            let prog = check_and_compile(db, file_name);
+    let root_dir = cli.path.unwrap_or("".into());
+    match cli.cmd {
+        Command::Run => {
+            let prog = check_and_compile(db, &root_dir);
             let mut vm = VM::new(&prog.funcs);
             match vm.eval_func("main") {
                 Some(_) => println!("Result: {:?}", vm.finish()),
                 None => println!("runtime error occured!"),
             }
         }
-        Cli::Compile { file_name } => {
-            let prog = check_and_compile(db, file_name);
+        Command::Compile => {
+            let prog = check_and_compile(db, &root_dir);
             let obj = codegen::compile(prog, false);
             let bytes = obj.emit().unwrap();
-            std::fs::write("a.out", bytes).unwrap()
+            let target = root_dir + "build/";
+            if !std::fs::exists(&target).unwrap() {
+                std::fs::create_dir(&target).unwrap();
+            }
+            std::fs::write(target + "a.out", bytes).unwrap()
         }
-        Cli::Print { ir, file_name } => {
-            let prog = check_and_compile(db, file_name);
+        Command::Print { ir } => {
+            let prog = check_and_compile(db, &root_dir);
             match ir {
                 Ir::Cranelift => {
                     codegen::compile(prog, true);
@@ -71,8 +80,8 @@ fn main() {
     }
 }
 
-fn check_and_compile(db: &DatabaseImpl, root_dir: String) -> bytecode::Prog {
-    let c = Crate::new(db, root_dir.clone().into());
+fn check_and_compile(db: &DatabaseImpl, root_dir: &String) -> bytecode::Prog {
+    let c = input::Crate::new(db, root_dir.clone().into());
     driver::type_check(db, c);
     let diags = driver::type_check::accumulated::<Diagnostic>(db, c);
     for diag in &diags {
