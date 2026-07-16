@@ -2,18 +2,30 @@ use std::collections::HashMap;
 
 use salsa::Database;
 
-use crate::{ast, bytecode, input, lowerer, resolve, tp};
+use crate::{
+    ast, bytecode,
+    input::{self, get_source},
+    lowerer, resolve, tp,
+};
 
 #[salsa::tracked]
-pub fn type_check_file(db: &dyn Database, sf: input::Source) {
-    let ast = input::parse_file(db, sf);
+pub fn type_check(db: &dyn Database, c: input::Crate) {
+    let root = get_source(db, c, vec![]).unwrap();
+    let mut sources = vec![root];
+    while let Some(sf) = sources.pop() {
+        let ast = input::parse_file(db, sf);
 
-    for def in ast.defs(db) {
-        match def {
-            ast::Def::Fn(func) => {
-                type_check_func(db, func);
+        for def in ast.defs(db) {
+            match def {
+                ast::Def::Fn(func) => {
+                    type_check_func(db, func);
+                }
+                ast::Def::Struct(_) => (),
+                ast::Def::ModuleDecl(ident) => {
+                    let sf = get_child_sf(db, sf, ident);
+                    sources.push(sf)
+                }
             }
-            ast::Def::Struct(_) => (),
         }
     }
 }
@@ -23,10 +35,9 @@ pub fn type_check_func<'db>(
     db: &'db dyn Database,
     func: ast::FnDef<'db>,
 ) -> tp::InferenceResult<'db> {
-    let defs = resolve::get_defs(db, func.sf(db));
-    let mut env: tp::Env = tp::Env::new(db, defs);
+    let mut env: tp::Env = tp::Env::new(db, func.sf(db));
     for (arg, tp) in func.args(db) {
-        let tp = resolve::parse_type_expr(db, tp);
+        let tp = resolve::parse_type_expr(db, tp, func.sf(db));
         let bindings = env.check_pat(arg, tp);
         env.extend(bindings);
     }
@@ -38,27 +49,46 @@ pub fn type_check_func<'db>(
     env.finish()
 }
 
-pub fn compile(db: &dyn Database, sf: input::Source) -> bytecode::Prog {
-    let ast = input::parse_file(db, sf);
+pub fn compile(db: &dyn Database, c: input::Crate) -> bytecode::Prog {
     let mut funcs: HashMap<String, bytecode::Func> = HashMap::new();
     let mut externs: HashMap<String, bytecode::FuncSig> = HashMap::new();
 
-    for def in ast.defs(db) {
-        match def {
-            ast::Def::Fn(func) => {
-                let name = func.name(db).text(db).clone();
-                match lowerer::Builder::new(db, func).compile() {
+    let root = get_source(db, c, vec![]).unwrap();
+    let mut sources = vec![root];
+
+    while let Some(sf) = sources.pop() {
+        let ast = input::parse_file(db, sf);
+        for def in ast.defs(db) {
+            match def {
+                ast::Def::Fn(func) => match lowerer::Builder::new(db, func).compile() {
                     lowerer::LoweringResult::Function(compiled_func) => {
+                        let name = resolve::get_fn_full_name(db, sf, func);
                         funcs.insert(name, compiled_func);
                     }
                     lowerer::LoweringResult::Extern(sig) => {
+                        let name = func.name(db).text(db).clone();
                         externs.insert(name, sig);
                     }
+                },
+                ast::Def::Struct(_) => (),
+                ast::Def::ModuleDecl(ident) => {
+                    let sf = get_child_sf(db, sf, ident);
+                    sources.push(sf);
                 }
             }
-            ast::Def::Struct(_) => (),
         }
     }
 
     bytecode::Prog { funcs, externs }
+}
+
+pub fn get_child_sf(
+    db: &(dyn Database + 'static),
+    sf: input::Source,
+    ident: ast::Ident<'_>,
+) -> input::Source {
+    let mut path = sf.module_path(db).clone();
+    path.push(ident.text(db).clone());
+    let sf = get_source(db, sf.c(db), path).unwrap();
+    sf
 }
