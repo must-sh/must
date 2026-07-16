@@ -2,7 +2,7 @@ use crate::{
     ast::{self, FnDef, Ident, Path, TypeExprId},
     diagnostic::Diagnostic,
     driver::get_child_sf,
-    input::{self, Source, get_source},
+    input::{self, Source},
     tp::{FnSig, TypeData, TypeId, TypeVar},
 };
 use salsa::{Accumulator, Database};
