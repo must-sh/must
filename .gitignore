@@ -1,4 +1,5 @@
 /target
-a.out
+*.out
 main
 *.mva
+out

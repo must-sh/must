@@ -42,6 +42,7 @@ FnArg: (PatternId<'db>, TypeExprId<'db>) = {
 Def: Def<'db> = {
     FnDef => Def::Fn(<>),
     StructDef => Def::Struct(<>),
+    "mod" <id: Ident> => Def::ModuleDecl(id),
 }
 
 StructField: (Ident<'db>, TypeExprId<'db>) = {
@@ -82,6 +83,20 @@ FnDef: FnDef<'db> = {
 Ident: Ident<'db> = {
     r"[a-zA-Z_]+" => Ident::new(db, <>.to_string())
 }
+
+SpannedIdent: (Ident<'db>, Span<'db>) = {
+    <l: @L> <id: Ident> <r: @R> => {
+        let span = Span::new(db, l, r);
+        (id, span)
+    }
+}
+
+Path: Path<'db> = {
+    <mut v: (<SpannedIdent> "::")*> <e: SpannedIdent> => {
+        v.push(e);
+        Path::new(db, v)
+    }
+};
 
 Num: i64 = <s: r"[0-9]+"> => s.parse().unwrap();
 
@@ -168,7 +183,7 @@ Expr40Data: ExprData<'db> = {
     "(" ")" => ExprData::Tuple(vec![]),
     "(" <e: Expr0Data> ")" => e,
     "(" <exprs: TwoOrMore<Expr0>> ")" => ExprData::Tuple(exprs),
-    <id: Ident> => ExprData::Var(id),
+    <id: Path> => ExprData::Var(id),
     <e: Expr40> "(" <args: CommaSep<Expr0>> ")" => ExprData::FnCall(e, args),
     <n: Num> => ExprData::Number(n),
     "true" => ExprData::Bool(true),
@@ -176,12 +191,12 @@ Expr40Data: ExprData<'db> = {
 
     <e: Expr40> "." <id: Ident> => ExprData::Field(e, id),
     <e1: Expr40> "[" <e2: Expr0> "]" => ExprData::Index(e1, e2),
-    <id: Ident> ".{" <fields: CommaSep<StructInit>> "}" => ExprData::Struct(id, fields),
+    <id: Path> ".{" <fields: CommaSep<StructInit>> "}" => ExprData::Struct(id, fields),
     "[" <exprs: CommaSep<Expr0>> "]" => ExprData::Array(exprs),
 
 
     ! => {
-        Diagnostic::parser_error(<>.error).accumulate(db);
+        Diagnostic::parser_error(<>.error, source).accumulate(db);
         ExprData::Error
     }
 };
@@ -227,7 +242,7 @@ TypeExprData: TypeExprData<'db> = {
     "*" "mut" <tp: TypeExpr> => TypeExprData::Ptr(tp, true),
     "(" ")" => TypeExprData::Tuple(vec![]),
     "(" <tps: TwoOrMore<TypeExpr>> ")" => TypeExprData::Tuple(tps),
-    <id: Ident> => TypeExprData::Var(id),
+    <id: Path> => TypeExprData::Var(id),
     "[" <n: Num> "]" <tp: TypeExpr> => TypeExprData::Array(n as usize, tp),
     "[" "]" <tp: TypeExpr> => TypeExprData::Slice(tp, false),
     "[" "]" "mut" <tp: TypeExpr> => TypeExprData::Slice(tp, true),

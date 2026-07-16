@@ -3,15 +3,22 @@ use std::collections::HashMap;
 use salsa::{Accumulator, Database};
 
 use crate::{
-    ast::{ExprData, ExprId, Ident, PatternData, PatternId, Span},
+    ast::{ExprData, ExprId, Ident, Path, PatternData, PatternId, Span},
     bytecode,
     diagnostic::Diagnostic,
-    resolve::ModuleDefs,
+    input::Source,
+    resolve::{self, Item},
 };
 
 #[salsa::interned(debug)]
 pub struct TypeId {
     pub data: TypeData<'db>,
+}
+
+#[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::Update)]
+pub struct TypeVar<'db> {
+    pub sf: Source,
+    pub name: Ident<'db>,
 }
 
 #[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::Update)]
@@ -25,7 +32,7 @@ pub enum TypeData<'db> {
     Ptr(TypeId<'db>, bool),
     Slice(TypeId<'db>, bool),
     Tuple(Vec<TypeId<'db>>),
-    Var(usize),
+    Var(TypeVar<'db>),
     Array(usize, TypeId<'db>),
 }
 
@@ -36,11 +43,7 @@ impl<'db> TypeData<'db> {
 }
 
 impl<'db> TypeId<'db> {
-    pub(crate) fn layout(
-        &self,
-        type_map: &HashMap<usize, TypeInfo>,
-        db: &dyn Database,
-    ) -> bytecode::Layout {
+    pub(crate) fn layout(&self, db: &dyn Database) -> bytecode::Layout {
         match self.data(db) {
             TypeData::Error => panic!(),
             TypeData::Int => bytecode::Layout::int64(),
@@ -54,15 +57,11 @@ impl<'db> TypeId<'db> {
                 bytecode::Layout::strct(&[bytecode::Layout::ptr(), bytecode::Layout::int64()])
             }
             TypeData::Tuple(items) => bytecode::Layout::strct(
-                &items
-                    .iter()
-                    .map(|tp| tp.layout(type_map, db))
-                    .collect::<Vec<_>>()[..],
+                &items.iter().map(|tp| tp.layout(db)).collect::<Vec<_>>()[..],
             ),
-            TypeData::Var(id) => {
-                let info = type_map.get(&id).unwrap();
-                let mut fields = info
-                    .fields
+            TypeData::Var(tv) => {
+                let fields = struct_fields(db, &tv);
+                let mut fields = fields
                     .iter()
                     .map(|(_, (id, tp))| (id, tp))
                     .collect::<Vec<_>>();
@@ -70,13 +69,25 @@ impl<'db> TypeId<'db> {
                 bytecode::Layout::strct(
                     &fields
                         .iter()
-                        .map(|(_, tp)| tp.layout(type_map, db))
+                        .map(|(_, tp)| tp.layout(db))
                         .collect::<Vec<_>>()[..],
                 )
             }
-            TypeData::Array(n, tp) => bytecode::Layout::array(n, tp.layout(type_map, db)),
+            TypeData::Array(n, tp) => bytecode::Layout::array(n, tp.layout(db)),
         }
     }
+}
+
+fn struct_fields<'a>(
+    db: &'a dyn Database,
+    tv: &TypeVar<'a>,
+) -> HashMap<Ident<'a>, (usize, TypeId<'a>)> {
+    let fields =
+        match resolve::get_item(db, tv.sf, Path::new(db, vec![(tv.name, Span::nowhere(db))])) {
+            Item::Type { fields, .. } => fields,
+            _ => panic!(),
+        };
+    fields
 }
 
 #[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::Update)]
@@ -90,111 +101,170 @@ pub struct InferenceResult<'db> {
     pub type_map: HashMap<ExprId<'db>, TypeId<'db>>,
 }
 
-#[derive(Debug, PartialEq, Clone, salsa::Update)]
-pub struct TypeInfo<'db> {
-    pub name: Ident<'db>,
-    pub fields: HashMap<Ident<'db>, (usize, TypeId<'db>)>,
-}
-
 pub struct Env<'a> {
     scopes: Vec<HashMap<Ident<'a>, VarBinding<'a>>>,
-    mod_defs: ModuleDefs<'a>,
+    source: Source,
     type_map: HashMap<ExprId<'a>, TypeId<'a>>,
     db: &'a dyn Database,
 }
 
 impl Diagnostic {
-    pub fn type_mismatch(db: &dyn Database, span: Span, exp: TypeId, got: TypeId) -> Diagnostic {
+    pub fn type_mismatch(
+        db: &dyn Database,
+        span: Span,
+        exp: TypeId,
+        got: TypeId,
+        source: Source,
+    ) -> Diagnostic {
         Diagnostic::error(
             db,
+            source,
             span,
             format!("type mismatch. expected: {:?}, got: {:?}", exp, got),
         )
     }
 
-    pub fn missing_argument(db: &dyn Database, id: usize, span: Span, tp: TypeId) -> Self {
-        Diagnostic::error(db, span, format!("missing arg #{} of type {:?}", id, tp))
-    }
-
-    pub fn unexpected_argument(db: &dyn Database, id: usize, span: Span) -> Self {
-        Diagnostic::error(db, span, format!("unexpected arg #{}", id))
-    }
-
-    pub fn unbound_var(db: &dyn Database, span: Span, name: Ident) -> Self {
-        Diagnostic::error(db, span, format!("unbound var: {:?}", name.text(db)))
-    }
-
-    pub fn unknown_type(db: &dyn Database, span: Span, name: Ident) -> Self {
-        Diagnostic::error(db, span, format!("unknown type: {:?}", name.text(db)))
-    }
-
-    pub fn duplicate_field(db: &dyn Database, span: Span, name: Ident) -> Self {
-        Diagnostic::error(db, span, format!("duplicate field: {:?}", name.text(db)))
-    }
-
-    pub fn missing_field(db: &dyn Database, span: Span, name: Ident) -> Self {
-        Diagnostic::error(db, span, format!("missing field: {:?}", name.text(db)))
-    }
-
-    pub fn no_field_on_type(db: &dyn Database, span: Span, name: Ident, tp: TypeId) -> Self {
+    pub fn missing_argument(
+        db: &dyn Database,
+        id: usize,
+        span: Span,
+        tp: TypeId,
+        source: Source,
+    ) -> Self {
         Diagnostic::error(
             db,
+            source,
+            span,
+            format!("missing arg #{} of type {:?}", id, tp),
+        )
+    }
+
+    pub fn unexpected_argument(db: &dyn Database, id: usize, span: Span, source: Source) -> Self {
+        Diagnostic::error(db, source, span, format!("unexpected arg #{}", id))
+    }
+
+    pub fn unbound_var(db: &dyn Database, span: Span, name: Ident, source: Source) -> Self {
+        Diagnostic::error(
+            db,
+            source,
+            span,
+            format!("unbound var: {:?}", name.text(db)),
+        )
+    }
+
+    pub fn unknown_type(db: &dyn Database, span: Span, name: String, source: Source) -> Self {
+        Diagnostic::error(db, source, span, format!("unknown type: {:?}", name))
+    }
+
+    pub fn duplicate_field(db: &dyn Database, span: Span, name: Ident, source: Source) -> Self {
+        Diagnostic::error(
+            db,
+            source,
+            span,
+            format!("duplicate field: {:?}", name.text(db)),
+        )
+    }
+
+    pub fn missing_field(db: &dyn Database, span: Span, name: Ident, source: Source) -> Self {
+        Diagnostic::error(
+            db,
+            source,
+            span,
+            format!("missing field: {:?}", name.text(db)),
+        )
+    }
+
+    pub fn no_field_on_type(
+        db: &dyn Database,
+        span: Span,
+        name: Ident,
+        tp: TypeId,
+        source: Source,
+    ) -> Self {
+        Diagnostic::error(
+            db,
+            source,
             span,
             format!("no field named {:?} on type {:?}", name.text(db), tp),
         )
     }
 
-    pub fn not_a_function(db: &dyn Database, span: Span) -> Self {
+    pub fn not_a_function(db: &dyn Database, span: Span, source: Source) -> Self {
         Diagnostic::error(
             db,
+            source,
             span,
             "this expression is not a function and cannot be called".to_string(),
         )
     }
 
-    pub fn cannot_assign(db: &dyn Database, span: Span) -> Self {
-        Diagnostic::error(db, span, "this expression cannot be mutated".to_string())
-    }
-
-    pub fn cannot_index(db: &dyn Database, span: Span) -> Self {
-        Diagnostic::error(db, span, "this expression cannot be indexed".to_string())
-    }
-
-    pub fn cannot_index_with(db: &dyn Database, span: Span) -> Self {
+    pub fn cannot_assign(db: &dyn Database, span: Span, source: Source) -> Self {
         Diagnostic::error(
             db,
+            source,
+            span,
+            "this expression cannot be mutated".to_string(),
+        )
+    }
+
+    pub fn cannot_index(db: &dyn Database, span: Span, source: Source) -> Self {
+        Diagnostic::error(
+            db,
+            source,
+            span,
+            "this expression cannot be indexed".to_string(),
+        )
+    }
+
+    pub fn cannot_index_with(db: &dyn Database, span: Span, source: Source) -> Self {
+        Diagnostic::error(
+            db,
+            source,
             span,
             "this expression cannot be use as an index".to_string(),
         )
     }
 
-    pub fn cannot_dereference(db: &dyn Database, span: Span) -> Self {
+    pub fn cannot_dereference(db: &dyn Database, span: Span, source: Source) -> Self {
         Diagnostic::error(
             db,
+            source,
             span,
             "this expression cannot be dereferenced".to_string(),
         )
     }
 
-    pub fn unexpected_tuple(db: &dyn Database, span: Span, n: usize, tp: TypeId) -> Self {
+    pub fn unexpected_tuple(
+        db: &dyn Database,
+        span: Span,
+        n: usize,
+        tp: TypeId,
+        source: Source,
+    ) -> Self {
         Diagnostic::error(
             db,
+            source,
             span,
             format!("expected {:?}, but this matches {}-element tuple", tp, n),
         )
     }
 
-    pub fn missing_else_branch(db: &dyn Database, span: Span, tp: TypeId) -> Self {
-        Diagnostic::error(db, span, format!("missing else branch of type {:?}", tp))
+    pub fn missing_else_branch(db: &dyn Database, span: Span, tp: TypeId, source: Source) -> Self {
+        Diagnostic::error(
+            db,
+            source,
+            span,
+            format!("missing else branch of type {:?}", tp),
+        )
     }
 }
 
 impl<'a> Env<'a> {
-    pub fn new(db: &'a dyn Database, mod_defs: ModuleDefs<'a>) -> Self {
+    pub fn new(db: &'a dyn Database, source: Source) -> Self {
         let scopes = vec![HashMap::new()];
         Self {
             scopes,
-            mod_defs,
+            source,
             type_map: HashMap::new(),
             db,
         }
@@ -308,17 +378,15 @@ impl<'a> Env<'a> {
             }
             ExprData::Var(x) => match self.get_var(x) {
                 Some(VarBinding { tp, is_mut }) => (tp, is_mut),
-                None => {
-                    Diagnostic::unbound_var(db, e.span(db), x).accumulate(db);
-                    (TypeData::Error.wrap(db), true)
-                }
+                None => (TypeData::Error.wrap(db), true),
             },
             ExprData::FnCall(fn_expr, exprs) => {
                 let (tp, _) = self.infer_expr(fn_expr);
                 let sig = match tp.data(db) {
                     TypeData::Fn(sig) => sig,
                     _ => {
-                        Diagnostic::not_a_function(db, fn_expr.span(db)).accumulate(db);
+                        Diagnostic::not_a_function(db, fn_expr.span(db), self.source)
+                            .accumulate(db);
                         return (TypeData::Error.wrap(db), true);
                     }
                 };
@@ -329,14 +397,16 @@ impl<'a> Env<'a> {
                     let exp_tp = match tp_args.next() {
                         Some(tp) => tp,
                         None => {
-                            Diagnostic::unexpected_argument(db, id, e.span(db)).accumulate(db);
+                            Diagnostic::unexpected_argument(db, id, e.span(db), self.source)
+                                .accumulate(db);
                             continue;
                         }
                     };
                     self.check_expr(e, exp_tp, false);
                 }
                 if let Some(tp) = tp_args.next() {
-                    Diagnostic::missing_argument(db, id, e.span(db), tp).accumulate(db);
+                    Diagnostic::missing_argument(db, id, e.span(db), tp, self.source)
+                        .accumulate(db);
                 }
                 (sig.ret, false)
             }
@@ -348,7 +418,8 @@ impl<'a> Env<'a> {
                     self.check_expr(el, tp, false);
                 } else {
                     if !self.coerce_into(tp, TypeData::Tuple(vec![]).wrap(db)) {
-                        Diagnostic::missing_else_branch(db, e.span(db), tp).accumulate(db)
+                        Diagnostic::missing_else_branch(db, e.span(db), tp, self.source)
+                            .accumulate(db)
                     }
                 }
                 (tp, false)
@@ -361,7 +432,7 @@ impl<'a> Env<'a> {
             ExprData::Assign(e1, e2) => {
                 let (tp, is_mut) = self.infer_expr(e1);
                 if !is_mut {
-                    Diagnostic::cannot_assign(db, e1.span(db)).accumulate(db);
+                    Diagnostic::cannot_assign(db, e1.span(db), self.source).accumulate(db);
                 }
                 self.check_expr(e2, tp, false);
                 (TypeData::Tuple(vec![]).wrap(db), false)
@@ -369,7 +440,7 @@ impl<'a> Env<'a> {
             ExprData::Deref(e) => match self.infer_expr(e).0.data(db) {
                 TypeData::Ptr(tp, is_mut) => (tp, is_mut),
                 _ => {
-                    Diagnostic::cannot_dereference(db, e.span(db)).accumulate(db);
+                    Diagnostic::cannot_dereference(db, e.span(db), self.source).accumulate(db);
                     (TypeData::Error.wrap(db), true)
                 }
             },
@@ -386,25 +457,29 @@ impl<'a> Env<'a> {
                 self.infer_expr(e1);
                 self.infer_expr(e2)
             }
-            ExprData::Struct(ident, mut items) => {
-                let tp = if let Some(tp_info) = self.get_type_info(ident.get_id()) {
-                    for (field, tp) in tp_info.fields {
+            ExprData::Struct(name, mut items) => {
+                let tp = if let Some(tv) = self.get_tvar(name) {
+                    let fields = struct_fields(db, &tv);
+                    for (field, tp) in fields {
                         let mut iter = items.extract_if(.., |(name, _)| *name == field);
                         match (iter.next(), iter.next()) {
                             (Some((_, expr)), None) => {
                                 self.check_expr(expr, tp.1, false);
                             }
                             (Some(_), Some(_)) => {
-                                Diagnostic::duplicate_field(db, e.span(db), field).accumulate(db);
+                                Diagnostic::duplicate_field(db, e.span(db), field, self.source)
+                                    .accumulate(db);
                             }
                             (None, _) => {
-                                Diagnostic::missing_field(db, e.span(db), field).accumulate(db);
+                                Diagnostic::missing_field(db, e.span(db), field, self.source)
+                                    .accumulate(db);
                             }
                         }
                     }
-                    TypeData::Var(tp_info.name.get_id()).wrap(db)
+                    TypeData::Var(tv).wrap(db)
                 } else {
-                    Diagnostic::unknown_type(db, e.span(db), ident).accumulate(db);
+                    Diagnostic::unknown_type(db, e.span(db), name.join(db), self.source)
+                        .accumulate(db);
                     TypeData::Error.wrap(db)
                 };
                 (tp, false)
@@ -420,27 +495,25 @@ impl<'a> Env<'a> {
                     | TypeData::Fn(_)
                     | TypeData::Array(_, _)
                     | TypeData::Tuple(_) => {
-                        Diagnostic::no_field_on_type(db, e.span(db), ident, tp).accumulate(db);
+                        Diagnostic::no_field_on_type(db, e.span(db), ident, tp, self.source)
+                            .accumulate(db);
                         (TypeData::Error.wrap(db), true)
                     }
-                    TypeData::Var(id) => {
-                        if let Some(tp_info) = self.get_type_info(id) {
-                            if let Some(tp) = tp_info.fields.get(&ident) {
-                                (tp.1, is_mut)
-                            } else {
-                                Diagnostic::no_field_on_type(db, e.span(db), ident, tp)
-                                    .accumulate(db);
-                                (TypeData::Error.wrap(db), true)
-                            }
+                    TypeData::Var(tv) => {
+                        if let Some(tp) = struct_fields(db, &tv).get(&ident) {
+                            (tp.1, is_mut)
                         } else {
-                            panic!()
+                            Diagnostic::no_field_on_type(db, e.span(db), ident, tp, self.source)
+                                .accumulate(db);
+                            (TypeData::Error.wrap(db), true)
                         }
                     }
                     TypeData::Slice(_, _) => {
                         if ident.text(db) == "len" {
                             (TypeData::Int.wrap(db), false)
                         } else {
-                            Diagnostic::no_field_on_type(db, e.span(db), ident, tp).accumulate(db);
+                            Diagnostic::no_field_on_type(db, e.span(db), ident, tp, self.source)
+                                .accumulate(db);
                             (TypeData::Error.wrap(db), true)
                         }
                     }
@@ -470,7 +543,7 @@ impl<'a> Env<'a> {
                     | TypeData::Ptr(_, _)
                     | TypeData::Tuple(_)
                     | TypeData::Var(_) => {
-                        Diagnostic::cannot_index(db, e1.span(db)).accumulate(db);
+                        Diagnostic::cannot_index(db, e1.span(db), self.source).accumulate(db);
                         (TypeData::Error.wrap(db), true)
                     }
                     TypeData::Slice(tp, is_mut) => (tp, is_mut),
@@ -487,7 +560,7 @@ impl<'a> Env<'a> {
                     | TypeData::Tuple(_)
                     | TypeData::Var(_)
                     | TypeData::Array(_, _) => {
-                        Diagnostic::cannot_index_with(db, e1.span(db)).accumulate(db);
+                        Diagnostic::cannot_index_with(db, e1.span(db), self.source).accumulate(db);
                         (TypeData::Error.wrap(db), true)
                     }
                 }
@@ -511,7 +584,7 @@ impl<'a> Env<'a> {
     pub fn check_expr(&mut self, e: ExprId<'a>, tp: TypeId<'a>, exp_mut: bool) {
         let (tp_inferred, mut_inferred) = self.infer_expr(e);
         if !(self.coerce_into(tp_inferred, tp) && (!exp_mut || mut_inferred)) {
-            Diagnostic::type_mismatch(self.db, e.span(self.db), tp, tp_inferred)
+            Diagnostic::type_mismatch(self.db, e.span(self.db), tp, tp_inferred, self.source)
                 .accumulate(self.db);
         }
     }
@@ -520,23 +593,20 @@ impl<'a> Env<'a> {
         self.scopes.last_mut().unwrap().insert(arg, binding);
     }
 
-    pub fn get_var(&self, x: Ident<'a>) -> Option<VarBinding<'a>> {
-        self.scopes
-            .iter()
-            .rev()
-            .find_map(|scope| scope.get(&x))
-            .cloned()
-            .or_else(|| {
-                self.mod_defs
-                    .function_map
-                    .get(&x)
-                    .cloned()
-                    .map(TypeData::Fn)
-                    .map(|tp| VarBinding {
-                        tp: tp.wrap(self.db),
-                        is_mut: false,
-                    })
-            })
+    pub fn get_var(&self, x: Path<'a>) -> Option<VarBinding<'a>> {
+        if let [(id, _)] = x.data(self.db)[..]
+            && let Some(v) = self.scopes.iter().rev().find_map(|scope| scope.get(&id))
+        {
+            Some(v.clone())
+        } else {
+            match resolve::get_item(self.db, self.source, x) {
+                Item::Function { sig, .. } => Some(VarBinding {
+                    tp: TypeData::Fn(sig).wrap(self.db),
+                    is_mut: false,
+                }),
+                _ => None,
+            }
+        }
     }
 
     pub fn check_pat(
@@ -558,8 +628,14 @@ impl<'a> Env<'a> {
                         .flat_map(|(pat, tp)| self.check_pat(pat, tp))
                         .collect()
                 } else {
-                    Diagnostic::unexpected_tuple(self.db, pat.span(self.db), pats.len(), tp)
-                        .accumulate(self.db);
+                    Diagnostic::unexpected_tuple(
+                        self.db,
+                        pat.span(self.db),
+                        pats.len(),
+                        tp,
+                        self.source,
+                    )
+                    .accumulate(self.db);
                     vec![]
                 }
             }
@@ -572,8 +648,11 @@ impl<'a> Env<'a> {
         }
     }
 
-    fn get_type_info(&self, id: usize) -> Option<TypeInfo<'a>> {
-        self.mod_defs.type_map.get(&id).cloned()
+    fn get_tvar(&self, x: Path<'a>) -> Option<TypeVar<'a>> {
+        match resolve::get_item(self.db, self.source, x) {
+            Item::Type { tvar, .. } => Some(tvar),
+            _ => None,
+        }
     }
 }
 

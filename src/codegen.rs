@@ -348,7 +348,10 @@ impl Lowerer {
     }
 
     fn get_func_id(&self, name: &str) -> FuncId {
-        *self.fn_map.get(name).unwrap()
+        match self.fn_map.get(name) {
+            Some(f) => *f,
+            None => panic!("{name}"),
+        }
     }
 
     fn get_func_sig(&self, id: FuncId) -> &Signature {

@@ -1,4 +1,5 @@
-mod foo;
+mod std
+mod foo
 
 fn main() {
     let x = std::must_read() in
