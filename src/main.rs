@@ -1,4 +1,4 @@
-use std::process::exit;
+use std::{collections::HashMap, fs::read_to_string, process::exit};
 
 use clap::Parser;
 use salsa::DatabaseImpl;
@@ -43,10 +43,29 @@ enum Ir {
     Bytecode,
 }
 
+#[derive(Debug, serde::Deserialize)]
+struct CrateConfig {
+    package: PackageInfo,
+    dependencies: HashMap<String, Dependency>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct PackageInfo {
+    name: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct Dependency {
+    path: String,
+}
+
 fn main() {
     let cli = Cli::parse();
     let db = &DatabaseImpl::new();
     let root_dir = cli.path.unwrap_or("".into());
+    let cfg_file = format!("{}/must.toml", root_dir);
+    let cfg: CrateConfig = toml::from_str(&read_to_string(cfg_file).unwrap()).unwrap();
+    println!("{:#?}", cfg);
     match cli.cmd {
         Command::Run => {
             let prog = check_and_compile(db, &root_dir);
