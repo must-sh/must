@@ -1,6 +1,11 @@
 use std::{collections::HashMap, fmt::Display};
 
-use crate::common::{Binop, Unop};
+use salsa::Database;
+
+use crate::{
+    common::{Binop, Unop},
+    tp::FnSig,
+};
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
@@ -282,7 +287,15 @@ impl Type {
 #[derive(Debug, Clone)]
 pub struct FuncSig {
     pub args: Vec<Layout>,
-    pub rets: Vec<Layout>,
+    pub ret: Layout,
+}
+
+impl FuncSig {
+    pub fn from_ast_sig(db: &dyn Database, sig: FnSig) -> Self {
+        let args = sig.args.into_iter().map(|tp| tp.layout(db)).collect();
+        let ret = sig.ret.layout(db);
+        Self { args, ret }
+    }
 }
 
 impl Display for Func {

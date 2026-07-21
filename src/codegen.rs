@@ -108,16 +108,16 @@ impl Lowerer {
 
     fn make_sig(&mut self, f: &bytecode::FuncSig) -> Signature {
         let mut sig = self.m.make_signature();
-        for ret in &f.rets {
-            match ret.abi() {
-                bytecode::Abi::Scalar(tp) => sig.returns.push(AbiParam::new(tp.as_cranelift_tp())),
-                bytecode::Abi::Struct => sig.params.push(AbiParam::special(
-                    bytecode::Type::Ptr.as_cranelift_tp(),
-                    ArgumentPurpose::StructReturn,
-                )),
-                bytecode::Abi::Unit => (),
-            };
-        }
+
+        match f.ret.abi() {
+            bytecode::Abi::Scalar(tp) => sig.returns.push(AbiParam::new(tp.as_cranelift_tp())),
+            bytecode::Abi::Struct => sig.params.push(AbiParam::special(
+                bytecode::Type::Ptr.as_cranelift_tp(),
+                ArgumentPurpose::StructReturn,
+            )),
+            bytecode::Abi::Unit => (),
+        };
+
         for arg in &f.args {
             match arg.abi() {
                 bytecode::Abi::Scalar(tp) => sig.params.push(AbiParam::new(tp.as_cranelift_tp())),
