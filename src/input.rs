@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 use salsa::{Accumulator, Database};
 
@@ -18,7 +21,9 @@ pub struct Source {
 #[salsa::input(debug)]
 pub struct Crate {
     #[returns(ref)]
-    root_dir: PathBuf,
+    pub root_dir: PathBuf,
+    #[returns(ref)]
+    pub dependencies: HashMap<String, Crate>,
 }
 
 #[salsa::tracked]

@@ -3,9 +3,12 @@ use std::collections::HashMap;
 use salsa::Database;
 
 use crate::{
-    ast, bytecode,
+    ast,
+    bytecode::{self, FuncSig},
     input::{self, get_source},
-    lowerer, resolve, tp,
+    lowerer,
+    resolve::{self, parse_fn_signature},
+    tp,
 };
 
 #[salsa::tracked]
@@ -49,6 +52,36 @@ pub fn type_check_func<'db>(
     env.finish()
 }
 
+pub fn get_crate_fns(db: &dyn Database, c: input::Crate) -> HashMap<String, bytecode::FuncSig> {
+    let mut fns: HashMap<String, bytecode::FuncSig> = HashMap::new();
+    let root = get_source(db, c, vec![]).unwrap();
+    let mut sources = vec![root];
+
+    while let Some(sf) = sources.pop() {
+        let ast = input::parse_file(db, sf);
+        for def in ast.defs(db) {
+            match def {
+                ast::Def::Fn(func) => {
+                    let sig = parse_fn_signature(db, func);
+                    let name = if func.is_ext(db) {
+                        func.name(db).text(db).clone()
+                    } else {
+                        resolve::get_fn_full_name(db, sf, func)
+                    };
+
+                    fns.insert(name, FuncSig::from_ast_sig(db, sig));
+                }
+                ast::Def::Struct(_) => (),
+                ast::Def::ModuleDecl(ident) => {
+                    let sf = get_child_sf(db, sf, ident);
+                    sources.push(sf);
+                }
+            }
+        }
+    }
+    fns
+}
+
 pub fn compile(db: &dyn Database, c: input::Crate) -> bytecode::Prog {
     let mut funcs: HashMap<String, bytecode::Func> = HashMap::new();
     let mut externs: HashMap<String, bytecode::FuncSig> = HashMap::new();
@@ -77,6 +110,11 @@ pub fn compile(db: &dyn Database, c: input::Crate) -> bytecode::Prog {
                 }
             }
         }
+    }
+
+    for (_, c) in c.dependencies(db) {
+        let fns = get_crate_fns(db, *c);
+        externs.extend(fns);
     }
 
     bytecode::Prog { funcs, externs }

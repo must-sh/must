@@ -279,7 +279,7 @@ impl<'a> Builder<'a> {
                 self.lower_place(expr).unwrap().leave_addr(self);
 
                 let sig = match self.get_tp(expr).data(self.db) {
-                    TypeData::Fn(sig) => self.make_sig(sig),
+                    TypeData::Fn(sig) => FuncSig::from_ast_sig(self.db, sig),
                     _ => panic!(),
                 };
 
@@ -506,7 +506,6 @@ impl<'a> Builder<'a> {
 
     pub fn compile(mut self) -> LoweringResult {
         let mut args = vec![];
-        let mut rets = vec![];
 
         for (arg, tp) in self.func.args(self.db).into_iter().rev() {
             let tp = parse_type_expr(self.db, tp, self.func.sf(self.db));
@@ -530,7 +529,7 @@ impl<'a> Builder<'a> {
             args.push(layout);
         }
 
-        let layout = if let Some(tp) = self.func.ret(self.db) {
+        let ret = if let Some(tp) = self.func.ret(self.db) {
             let tp = parse_type_expr(self.db, tp, self.func.sf(self.db));
             {
                 let this = &self;
@@ -540,12 +539,14 @@ impl<'a> Builder<'a> {
             bytecode::Layout::unit()
         };
 
-        rets.push(layout.clone());
         args.reverse();
-        let sig = FuncSig { args, rets };
+        let sig = FuncSig {
+            args,
+            ret: ret.clone(),
+        };
 
         if let Some(body) = self.func.body(self.db) {
-            match layout.abi() {
+            match ret.abi() {
                 bytecode::Abi::Unit => {
                     self.lower_into_tmp(body);
                 }
@@ -618,29 +619,6 @@ impl<'a> Builder<'a> {
 
     fn terminate_current_block(&mut self, term: Terminator) {
         self.blocks[self.current_block].terminator = term;
-    }
-
-    fn make_sig(&self, sig: FnSig) -> FuncSig {
-        let mut args = vec![];
-        let mut rets = vec![];
-
-        for tp in sig.args {
-            let layout = {
-                let this = &self;
-                tp.layout(this.db)
-            };
-            args.push(layout);
-        }
-
-        let layout = {
-            let this = &self;
-            let tp = sig.ret;
-            tp.layout(this.db)
-        };
-
-        rets.push(layout.clone());
-        args.reverse();
-        FuncSig { args, rets }
     }
 }
 

@@ -108,6 +108,12 @@ pub fn get_defs<'db>(db: &'db dyn Database, sf: Source) -> ModuleDefs<'db> {
         }
     }
 
+    let c = sf.c(db);
+    let deps = c.dependencies(db);
+    for (name, c) in deps {
+        items.insert(Ident::new(db, name), Item::Crate(*c));
+    }
+
     ModuleDefs { items }
 }
 
@@ -136,6 +142,7 @@ pub enum Item<'db> {
         fields: HashMap<Ident<'db>, (usize, TypeId<'db>)>,
     },
     Module,
+    Crate(input::Crate),
 }
 
 #[salsa::tracked]
@@ -158,6 +165,10 @@ pub fn get_item<'db>(db: &'db dyn Database, s: Source, p: ast::Path<'db>) -> Ite
                 Some(Item::Module) => {
                     let s = get_child_sf(db, s, name.0);
                     get_item(db, s, Path::new(db, rest))
+                }
+                Some(Item::Crate(c)) => {
+                    let root = input::get_source(db, *c, vec![]).unwrap();
+                    get_item(db, root, Path::new(db, rest))
                 }
                 _ => {
                     Diagnostic::unbound_var(db, name.1, name.0, s).accumulate(db);

@@ -1,6 +1,0 @@
-
-extern fn must_read() -> int;
-
-extern fn must_alloc(size: int) -> []mut int;
-
-extern fn must_print(x: int);
