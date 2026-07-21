@@ -1,4 +1,3 @@
-mod std
 mod foo
 
 fn main() {

@@ -1,2 +1,6 @@
 [package]
 name = "std"
+owner = "must-sh"
+kind = "lib"
+
+[dependencies]
