@@ -109,7 +109,7 @@ pub struct Func {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Hash, Clone, Copy, PartialEq, Eq)]
 pub enum Type {
     Int128,
     Int64,
@@ -129,7 +129,6 @@ pub enum Type {
     Float128,
 
     Bool,
-    Ptr,
 }
 
 #[derive(Debug, Clone)]
@@ -162,19 +161,11 @@ impl Layout {
         self.align
     }
 
-    pub fn int64() -> Self {
+    pub fn primitive(tp: Type) -> Self {
         Self {
-            size: 8,
-            align: 8,
-            fields: Fields::Primitive(Type::Int64),
-        }
-    }
-
-    pub fn bool() -> Self {
-        Self {
-            size: 1,
-            align: 1,
-            fields: Fields::Primitive(Type::Bool),
+            size: tp.size() as usize,
+            align: tp.size(),
+            fields: Fields::Primitive(tp),
         }
     }
 
@@ -182,7 +173,7 @@ impl Layout {
         Self {
             size: 8,
             align: 8,
-            fields: Fields::Primitive(Type::Ptr),
+            fields: Fields::Primitive(Type::UInt64),
         }
     }
 
@@ -265,7 +256,6 @@ impl Type {
     pub fn size(&self) -> u32 {
         match self {
             Type::Bool => 1,
-            Type::Ptr => 8,
             Type::Int8 => 1,
             Type::Int16 => 2,
             Type::Int32 => 4,

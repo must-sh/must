@@ -1,0 +1,7 @@
+[package]
+name = "test"
+owner = "must-sh"
+kind = "exe"
+
+[dependencies]
+std = { path = "../std" }

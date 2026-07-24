@@ -1,4 +1,5 @@
 use crate::ast::*;
+use crate::bytecode;
 use crate::diagnostic::Diagnostic;
 use salsa::Accumulator;
 use crate::common::{Binop, Unop};
@@ -236,8 +237,12 @@ SpannedTypeExpr<Data>: TypeExprId<'db> = {
 TypeExpr = SpannedTypeExpr<TypeExprData>;
 
 TypeExprData: TypeExprData<'db> = {
-    "int" => TypeExprData::Int,
-    "bool" => TypeExprData::Bool,
+    "int8" => TypeExprData::Primitive(bytecode::Type::Int8),
+    "int16" => TypeExprData::Primitive(bytecode::Type::Int16),
+    "int32" => TypeExprData::Primitive(bytecode::Type::Int32),
+    "int64" => TypeExprData::Primitive(bytecode::Type::Int64),
+    "int128" => TypeExprData::Primitive(bytecode::Type::Int128),
+    "bool" => TypeExprData::Primitive(bytecode::Type::Bool),
     "*" <tp: TypeExpr> => TypeExprData::Ptr(tp, false),
     "*" "mut" <tp: TypeExpr> => TypeExprData::Ptr(tp, true),
     "(" ")" => TypeExprData::Tuple(vec![]),

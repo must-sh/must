@@ -667,6 +667,7 @@ dependencies = [
  "cranelift-frontend",
  "cranelift-module",
  "cranelift-object",
+ "ena",
  "lalrpop",
  "lalrpop-util",
  "salsa",
