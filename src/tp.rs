@@ -1,13 +1,14 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, marker::PhantomData};
 
+use ena::unify::{InPlaceUnificationTable, NoError};
 use salsa::{Accumulator, Database};
 
 use crate::{
     ast::{ExprData, ExprId, Ident, Path, PatternData, PatternId, Span},
-    bytecode,
+    bytecode::{self},
     diagnostic::Diagnostic,
     input::Source,
-    resolve::{self, Item},
+    resolve::{self, Item, parse_fn_signature, parse_type_expr},
 };
 
 #[salsa::interned(debug)]
@@ -15,18 +16,64 @@ pub struct TypeId {
     pub data: TypeData<'db>,
 }
 
-#[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::Update)]
+#[derive(Debug, Hash, Eq, PartialEq, Clone, Copy, salsa::Update)]
 pub struct TypeVar<'db> {
     pub sf: Source,
     pub name: Ident<'db>,
+}
+
+use ena::unify::{UnifyKey, UnifyValue};
+
+#[derive(Debug, Hash, Eq, PartialEq, Clone, Copy, salsa::Update)]
+pub struct InferVar<'db>(pub u32, pub PhantomData<&'db ()>);
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum InferValue<'db> {
+    Unbound,
+    Numeric,
+    Bound(TypeId<'db>),
+}
+
+impl<'db> UnifyKey for InferVar<'db> {
+    type Value = InferValue<'db>;
+
+    fn index(&self) -> u32 {
+        self.0
+    }
+    fn from_index(u: u32) -> Self {
+        InferVar(u, PhantomData)
+    }
+    fn tag() -> &'static str {
+        "InferVar"
+    }
+}
+
+impl<'db> UnifyValue for InferValue<'db> {
+    type Error = NoError;
+
+    fn unify_values(value1: &Self, value2: &Self) -> Result<Self, Self::Error> {
+        match (value1, value2) {
+            // If either is bound, the result is bound.
+            // (Structural checking happens in `Env::unify`, not here).
+            (InferValue::Bound(t1), InferValue::Bound(t2)) => {
+                assert_eq!(t1, t2);
+                Ok(InferValue::Bound(*t1))
+            }
+            (InferValue::Bound(t), _) | (_, InferValue::Bound(t)) => Ok(InferValue::Bound(*t)),
+            // If either is constrained to be numeric, propagate the constraint.
+            (InferValue::Numeric, _) | (_, InferValue::Numeric) => Ok(InferValue::Numeric),
+            (InferValue::Unbound, InferValue::Unbound) => Ok(InferValue::Unbound),
+        }
+    }
 }
 
 #[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::Update)]
 pub enum TypeData<'db> {
     Error,
 
-    Int,
-    Bool,
+    Infer(InferVar<'db>),
+
+    Primitive(bytecode::Type),
     Range,
     Fn(FnSig<'db>),
     Ptr(TypeId<'db>, bool),
@@ -45,22 +92,23 @@ impl<'db> TypeData<'db> {
 impl<'db> TypeId<'db> {
     pub(crate) fn layout(&self, db: &dyn Database) -> bytecode::Layout {
         match self.data(db) {
-            TypeData::Error => panic!(),
-            TypeData::Int => bytecode::Layout::int64(),
-            TypeData::Bool => bytecode::Layout::bool(),
-            TypeData::Range => {
-                bytecode::Layout::strct(&[bytecode::Layout::int64(), bytecode::Layout::int64()])
-            }
+            r @ (TypeData::Error | TypeData::Infer(_)) => panic!("{:?}", r),
+            TypeData::Primitive(tp) => bytecode::Layout::primitive(tp),
+            TypeData::Range => bytecode::Layout::strct(&[
+                bytecode::Layout::primitive(bytecode::Type::UInt64),
+                bytecode::Layout::primitive(bytecode::Type::UInt64),
+            ]),
             TypeData::Fn(_) => bytecode::Layout::ptr(),
             TypeData::Ptr(_, _) => bytecode::Layout::ptr(),
-            TypeData::Slice(_, _) => {
-                bytecode::Layout::strct(&[bytecode::Layout::ptr(), bytecode::Layout::int64()])
-            }
+            TypeData::Slice(_, _) => bytecode::Layout::strct(&[
+                bytecode::Layout::ptr(),
+                bytecode::Layout::primitive(bytecode::Type::UInt64),
+            ]),
             TypeData::Tuple(items) => bytecode::Layout::strct(
                 &items.iter().map(|tp| tp.layout(db)).collect::<Vec<_>>()[..],
             ),
             TypeData::Var(tv) => {
-                let fields = struct_fields(db, &tv);
+                let fields = struct_fields(db, tv);
                 let mut fields = fields
                     .iter()
                     .map(|(_, (id, tp))| (id, tp))
@@ -78,16 +126,19 @@ impl<'db> TypeId<'db> {
     }
 }
 
-fn struct_fields<'a>(
+pub fn struct_fields<'a>(
     db: &'a dyn Database,
-    tv: &TypeVar<'a>,
+    tv: TypeVar<'a>,
 ) -> HashMap<Ident<'a>, (usize, TypeId<'a>)> {
-    let fields =
-        match resolve::get_item(db, tv.sf, Path::new(db, vec![(tv.name, Span::nowhere(db))])) {
-            Item::Type { fields, .. } => fields,
-            _ => panic!(),
-        };
-    fields
+    match resolve::get_item(db, tv.sf, Path::new(db, vec![(tv.name, Span::nowhere(db))])) {
+        Item::Type { def, .. } => def
+            .fields(db)
+            .into_iter()
+            .enumerate()
+            .map(|(id, (name, tp))| (name, (id, parse_type_expr(db, tp, tv.sf))))
+            .collect(),
+        _ => panic!(),
+    }
 }
 
 #[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::Update)]
@@ -103,6 +154,7 @@ pub struct InferenceResult<'db> {
 
 pub struct Env<'a> {
     scopes: Vec<HashMap<Ident<'a>, VarBinding<'a>>>,
+    unif_table: InPlaceUnificationTable<InferVar<'a>>,
     source: Source,
     type_map: HashMap<ExprId<'a>, TypeId<'a>>,
     db: &'a dyn Database,
@@ -265,9 +317,20 @@ impl<'a> Env<'a> {
         Self {
             scopes,
             source,
+            unif_table: InPlaceUnificationTable::new(),
             type_map: HashMap::new(),
             db,
         }
+    }
+
+    pub fn new_numeric_var(&mut self) -> TypeId<'a> {
+        let var = self.unif_table.new_key(InferValue::Numeric);
+        TypeData::Infer(var).wrap(self.db)
+    }
+
+    pub fn new_unbound_var(&mut self) -> TypeId<'a> {
+        let var = self.unif_table.new_key(InferValue::Unbound);
+        TypeData::Infer(var).wrap(self.db)
     }
 
     pub fn with_scope<F, R>(&mut self, f: F) -> R
@@ -280,13 +343,34 @@ impl<'a> Env<'a> {
         r
     }
 
-    pub fn coerce_into(&self, from: TypeId<'a>, into: TypeId<'a>) -> bool {
+    fn bind_var(&mut self, var: InferVar<'a>, ty: TypeId<'a>) -> bool {
+        if let InferValue::Numeric = self.unif_table.probe_value(var) {
+            match ty.data(self.db) {
+                TypeData::Primitive(p) => {} // Assuming `is_numeric` exists
+                TypeData::Infer(_) => {}     // Binding to another infer var is fine
+                _ => return false,           // Failed constraint
+            }
+        }
+
+        // TODO: occurs check
+
+        self.unif_table
+            .unify_var_value(var, InferValue::Bound(ty))
+            .is_ok()
+    }
+
+    pub fn coerce_into(&mut self, from: TypeId<'a>, into: TypeId<'a>) -> bool {
         let db = self.db;
-        match (from.data(db), into.data(db)) {
+        match (self.resolve(from).data(db), self.resolve(into).data(db)) {
             (_, TypeData::Error) | (TypeData::Error, _) => true,
-            (TypeData::Int, TypeData::Int) => true,
-            (TypeData::Bool, TypeData::Bool) => true,
+            (TypeData::Primitive(tp1), TypeData::Primitive(tp2)) => tp1 == tp2,
             (TypeData::Range, TypeData::Range) => true,
+            (TypeData::Infer(v1), TypeData::Infer(v2)) => {
+                self.unif_table.unify_var_var(v1, v2).is_ok()
+            }
+
+            (TypeData::Infer(var), _) => self.bind_var(var, into),
+            (_, TypeData::Infer(var)) => self.bind_var(var, from),
             (TypeData::Var(id1), TypeData::Var(id2)) => id1 == id2,
             (TypeData::Tuple(tps1), TypeData::Tuple(tps2)) => {
                 tps1.len() == tps2.len()
@@ -329,27 +413,49 @@ impl<'a> Env<'a> {
         }
     }
 
+    pub fn resolve(&mut self, mut tp: TypeId<'a>) -> TypeId<'a> {
+        while let TypeData::Infer(var) = tp.data(self.db) {
+            match self.unif_table.probe_value(var) {
+                InferValue::Bound(bound_tp) => {
+                    tp = bound_tp;
+                }
+                _ => break,
+            }
+        }
+        tp
+    }
+
     pub fn infer_expr(&mut self, e: ExprId<'a>) -> (TypeId<'a>, bool) {
         let db = self.db;
         let (tp, is_mut) = match e.data(db) {
-            ExprData::Number(_) => (TypeData::Int.wrap(db), false),
+            ExprData::Number(_) => (self.new_numeric_var(), false),
             ExprData::Binop(op, expr, expr1) => {
                 use crate::common::Binop::*;
                 let tp = match op {
                     Add | Sub | Mul | Div | Mod => {
-                        self.check_expr(expr, TypeData::Int.wrap(db), false);
-                        self.check_expr(expr1, TypeData::Int.wrap(db), false);
-                        TypeData::Int.wrap(db)
+                        let tp = self.new_numeric_var();
+                        self.check_expr(expr, tp, false);
+                        self.check_expr(expr1, tp, false);
+                        tp
                     }
                     Eq | Lt | NEq | Gt | Le | Ge => {
-                        self.check_expr(expr, TypeData::Int.wrap(db), false);
-                        self.check_expr(expr1, TypeData::Int.wrap(db), false);
-                        TypeData::Bool.wrap(db)
+                        let tp = self.new_numeric_var();
+                        self.check_expr(expr, tp, false);
+                        self.check_expr(expr1, tp, false);
+                        TypeData::Primitive(bytecode::Type::Bool).wrap(db)
                     }
                     And | Or => {
-                        self.check_expr(expr, TypeData::Bool.wrap(db), false);
-                        self.check_expr(expr1, TypeData::Bool.wrap(db), false);
-                        TypeData::Bool.wrap(db)
+                        self.check_expr(
+                            expr,
+                            TypeData::Primitive(bytecode::Type::Bool).wrap(db),
+                            false,
+                        );
+                        self.check_expr(
+                            expr1,
+                            TypeData::Primitive(bytecode::Type::Bool).wrap(db),
+                            false,
+                        );
+                        TypeData::Primitive(bytecode::Type::Bool).wrap(db)
                     }
                 };
                 (tp, false)
@@ -358,12 +464,17 @@ impl<'a> Env<'a> {
                 use crate::common::Unop::*;
                 let tp = match op {
                     Neg => {
-                        self.check_expr(expr, TypeData::Int.wrap(db), false);
-                        TypeData::Int.wrap(db)
+                        let tp = self.new_numeric_var();
+                        self.check_expr(expr, tp, false);
+                        tp
                     }
                     Not => {
-                        self.check_expr(expr, TypeData::Bool.wrap(db), false);
-                        TypeData::Bool.wrap(db)
+                        self.check_expr(
+                            expr,
+                            TypeData::Primitive(bytecode::Type::Bool).wrap(db),
+                            false,
+                        );
+                        TypeData::Primitive(bytecode::Type::Bool).wrap(db)
                     }
                 };
                 (tp, false)
@@ -412,7 +523,11 @@ impl<'a> Env<'a> {
             }
             ExprData::Error => (TypeData::Error.wrap(db), true),
             ExprData::If(cond, th, el) => {
-                self.check_expr(cond, TypeData::Bool.wrap(db), false);
+                self.check_expr(
+                    cond,
+                    TypeData::Primitive(bytecode::Type::Bool).wrap(db),
+                    false,
+                );
                 let (tp, _) = self.infer_expr(th);
                 if let Some(el) = el {
                     self.check_expr(el, tp, false);
@@ -425,7 +540,11 @@ impl<'a> Env<'a> {
                 (tp, false)
             }
             ExprData::While(cond, body) => {
-                self.check_expr(cond, TypeData::Bool.wrap(db), false);
+                self.check_expr(
+                    cond,
+                    TypeData::Primitive(bytecode::Type::Bool).wrap(db),
+                    false,
+                );
                 self.infer_expr(body);
                 (TypeData::Tuple(vec![]).wrap(db), false)
             }
@@ -452,14 +571,14 @@ impl<'a> Env<'a> {
                 let tps = exprs.into_iter().map(|e| self.infer_expr(e).0).collect();
                 (TypeData::Tuple(tps).wrap(db), false)
             }
-            ExprData::Bool(_) => (TypeData::Bool.wrap(db), false),
+            ExprData::Bool(_) => (TypeData::Primitive(bytecode::Type::Bool).wrap(db), false),
             ExprData::Seq(e1, e2) => {
                 self.infer_expr(e1);
                 self.infer_expr(e2)
             }
             ExprData::Struct(name, mut items) => {
                 let tp = if let Some(tv) = self.get_tvar(name) {
-                    let fields = struct_fields(db, &tv);
+                    let fields = struct_fields(db, tv);
                     for (field, tp) in fields {
                         let mut iter = items.extract_if(.., |(name, _)| *name == field);
                         match (iter.next(), iter.next()) {
@@ -486,21 +605,10 @@ impl<'a> Env<'a> {
             }
             ExprData::Field(expr, ident) => {
                 let (tp, is_mut) = self.infer_expr(expr);
-                match tp.data(db) {
+                match self.resolve(tp).data(db) {
                     TypeData::Error => (TypeData::Error.wrap(db), true),
-                    TypeData::Ptr(_, _)
-                    | TypeData::Int
-                    | TypeData::Bool
-                    | TypeData::Range
-                    | TypeData::Fn(_)
-                    | TypeData::Array(_, _)
-                    | TypeData::Tuple(_) => {
-                        Diagnostic::no_field_on_type(db, e.span(db), ident, tp, self.source)
-                            .accumulate(db);
-                        (TypeData::Error.wrap(db), true)
-                    }
                     TypeData::Var(tv) => {
-                        if let Some(tp) = struct_fields(db, &tv).get(&ident) {
+                        if let Some(tp) = struct_fields(db, tv).get(&ident) {
                             (tp.1, is_mut)
                         } else {
                             Diagnostic::no_field_on_type(db, e.span(db), ident, tp, self.source)
@@ -510,12 +618,17 @@ impl<'a> Env<'a> {
                     }
                     TypeData::Slice(_, _) => {
                         if ident.text(db) == "len" {
-                            (TypeData::Int.wrap(db), false)
+                            (TypeData::Primitive(bytecode::Type::UInt64).wrap(db), false)
                         } else {
                             Diagnostic::no_field_on_type(db, e.span(db), ident, tp, self.source)
                                 .accumulate(db);
                             (TypeData::Error.wrap(db), true)
                         }
+                    }
+                    _ => {
+                        Diagnostic::no_field_on_type(db, e.span(db), ident, tp, self.source)
+                            .accumulate(db);
+                        (TypeData::Error.wrap(db), true)
                     }
                 }
             }
@@ -534,40 +647,37 @@ impl<'a> Env<'a> {
             }
             ExprData::Index(e1, e2) => {
                 let (tp, is_mut) = self.infer_expr(e1);
-                let (tp, is_mut) = match tp.data(db) {
+                let (tp, is_mut) = match self.resolve(tp).data(db) {
                     TypeData::Error => (TypeData::Error.wrap(db), true),
-                    TypeData::Int
-                    | TypeData::Bool
-                    | TypeData::Range
-                    | TypeData::Fn(_)
-                    | TypeData::Ptr(_, _)
-                    | TypeData::Tuple(_)
-                    | TypeData::Var(_) => {
+                    TypeData::Slice(tp, is_mut) => (tp, is_mut),
+                    TypeData::Array(_, tp) => (tp, is_mut),
+                    _ => {
                         Diagnostic::cannot_index(db, e1.span(db), self.source).accumulate(db);
                         (TypeData::Error.wrap(db), true)
                     }
-                    TypeData::Slice(tp, is_mut) => (tp, is_mut),
-                    TypeData::Array(_, tp) => (tp, is_mut),
                 };
-                match self.infer_expr(e2).0.data(db) {
+                let idx_tp = self.infer_expr(e2).0;
+                match self.resolve(idx_tp).data(db) {
                     TypeData::Error => (TypeData::Error.wrap(db), true),
                     TypeData::Range => (TypeData::Slice(tp, is_mut).wrap(db), false),
-                    TypeData::Int => (tp, is_mut),
-                    TypeData::Bool
-                    | TypeData::Fn(_)
-                    | TypeData::Ptr(_, _)
-                    | TypeData::Slice(_, _)
-                    | TypeData::Tuple(_)
-                    | TypeData::Var(_)
-                    | TypeData::Array(_, _) => {
+                    TypeData::Primitive(bytecode::Type::UInt64) => (tp, is_mut),
+                    _ => {
                         Diagnostic::cannot_index_with(db, e1.span(db), self.source).accumulate(db);
                         (TypeData::Error.wrap(db), true)
                     }
                 }
             }
             ExprData::Range(e1, e2) => {
-                self.check_expr(e1, TypeData::Int.wrap(db), false);
-                self.check_expr(e2, TypeData::Int.wrap(db), false);
+                self.check_expr(
+                    e1,
+                    TypeData::Primitive(bytecode::Type::UInt64).wrap(db),
+                    false,
+                );
+                self.check_expr(
+                    e2,
+                    TypeData::Primitive(bytecode::Type::UInt64).wrap(db),
+                    false,
+                );
                 (TypeData::Range.wrap(db), false)
             }
         };
@@ -600,10 +710,13 @@ impl<'a> Env<'a> {
             Some(v.clone())
         } else {
             match resolve::get_item(self.db, self.source, x) {
-                Item::Function { sig, .. } => Some(VarBinding {
-                    tp: TypeData::Fn(sig).wrap(self.db),
-                    is_mut: false,
-                }),
+                Item::Function { def, .. } => {
+                    let sig = parse_fn_signature(self.db, def);
+                    Some(VarBinding {
+                        tp: TypeData::Fn(sig).wrap(self.db),
+                        is_mut: false,
+                    })
+                }
                 _ => None,
             }
         }
@@ -642,10 +755,22 @@ impl<'a> Env<'a> {
         }
     }
 
-    pub fn finish(self) -> InferenceResult<'a> {
-        InferenceResult {
-            type_map: self.type_map,
+    pub fn finish(mut self) -> InferenceResult<'a> {
+        let mut type_map = self.type_map.clone();
+        for tp in type_map.values_mut() {
+            *tp = self.resolve(*tp);
+            match tp.data(self.db) {
+                TypeData::Infer(id) => match self.unif_table.probe_value(id) {
+                    InferValue::Numeric => {
+                        self.bind_var(id, TypeData::Primitive(bytecode::Type::Int64).wrap(self.db));
+                        *tp = self.resolve(*tp);
+                    }
+                    _ => (),
+                },
+                _ => (),
+            }
         }
+        InferenceResult { type_map }
     }
 
     fn get_tvar(&self, x: Path<'a>) -> Option<TypeVar<'a>> {

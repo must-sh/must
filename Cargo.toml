@@ -10,6 +10,7 @@ cranelift-codegen = { version = "0.132.0", features = ["x86"] }
 cranelift-frontend = "0.132.0"
 cranelift-module = "0.132.0"
 cranelift-object = "0.132.0"
+ena = "0.14.4"
 lalrpop-util = "0.23.1"
 salsa = "0.26.2"
 serde = { version = "1.0.228", features = ["derive"] }

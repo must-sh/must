@@ -1,0 +1,14 @@
+
+
+fn foo(x: int32) -> int64 {
+    13
+}
+
+fn bar() -> int32 {
+    1
+}
+
+fn main() -> int64 {
+    let x = 42 in
+    foo(x) + bar()
+}

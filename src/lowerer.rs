@@ -8,7 +8,7 @@ use crate::{
     common::Binop,
     driver::type_check_func,
     resolve::{self, Item, parse_type_expr},
-    tp::{FnSig, TypeData, TypeId},
+    tp::{self, FnSig, TypeData, TypeId, struct_fields},
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -51,7 +51,7 @@ impl Place {
                 b.push_inst(Inst::Get {
                     id: local_id,
                     offset: 0,
-                    tp: bytecode::Type::Ptr,
+                    tp: bytecode::Type::UInt64,
                 });
                 b.push_inst(Inst::Load { offset, tp });
             }
@@ -68,7 +68,7 @@ impl Place {
                 b.push_inst(Inst::Get {
                     id: local_id,
                     offset: 0,
-                    tp: bytecode::Type::Ptr,
+                    tp: bytecode::Type::UInt64,
                 });
                 b.push_inst(Inst::Store { offset });
             }
@@ -82,7 +82,7 @@ impl Place {
                 b.push_inst(Inst::Get {
                     id: local_id,
                     offset: 0,
-                    tp: bytecode::Type::Ptr,
+                    tp: bytecode::Type::UInt64,
                 });
                 b.push_inst(Inst::PushInt(offset as i64));
                 b.push_inst(Inst::CapOffset)
@@ -178,10 +178,10 @@ impl<'a> Builder<'a> {
                 self.lower_place(e2)
             }
             ExprData::Index(e1, e2) => match self.get_tp(e2).data(self.db) {
-                TypeData::Int => {
+                TypeData::Primitive(_) => {
                     let elem_layout = match self.get_tp(e1).data(self.db) {
                         TypeData::Slice(tp, _) => {
-                            self.lower_into_tmp(e1).load(self, bytecode::Type::Ptr);
+                            self.lower_into_tmp(e1).load(self, bytecode::Type::UInt64);
                             {
                                 let this = &self;
                                 tp.layout(this.db)
@@ -199,7 +199,7 @@ impl<'a> Builder<'a> {
 
                     let idx_place = self.lower_into_tmp(e2);
 
-                    idx_place.load(self, bytecode::Type::Int64); // start
+                    idx_place.load(self, bytecode::Type::UInt64); // start
                     self.push_inst(Inst::PushInt(elem_layout.size() as i64));
                     self.push_inst(Inst::Binop(Binop::Mul));
 
@@ -367,7 +367,7 @@ impl<'a> Builder<'a> {
             ExprData::Struct(name, exprs) => {
                 let s = self.func.sf(self.db);
                 let fields = match resolve::get_item(self.db, s, name) {
-                    Item::Type { fields, .. } => fields,
+                    Item::Type { tvar, .. } => tp::struct_fields(self.db, tvar),
                     _ => panic!(),
                 };
                 let mut fields = fields
@@ -404,7 +404,7 @@ impl<'a> Builder<'a> {
             ExprData::Index(e1, e2) => {
                 let elem_layout = match self.get_tp(e1).data(self.db) {
                     TypeData::Slice(tp, _) => {
-                        self.lower_into_tmp(e1).load(self, bytecode::Type::Ptr);
+                        self.lower_into_tmp(e1).load(self, bytecode::Type::UInt64);
                         tp.layout(self.db)
                     }
                     TypeData::Array(_, tp) => {
@@ -416,21 +416,21 @@ impl<'a> Builder<'a> {
 
                 let idx_place = self.lower_into_tmp(e2);
 
-                idx_place.load(self, bytecode::Type::Int64); // start
+                idx_place.load(self, bytecode::Type::UInt64); // start
                 self.push_inst(Inst::PushInt(elem_layout.size() as i64));
                 self.push_inst(Inst::Binop(Binop::Mul));
 
                 self.push_inst(Inst::CapOffset);
 
                 match self.get_tp(e2).data(self.db) {
-                    TypeData::Int => {
+                    TypeData::Primitive(_) => {
                         let place = self.store_ptr();
                         place.copy_to(self, dest, &elem_layout)
                     }
                     TypeData::Range => {
                         dest.store(self);
-                        idx_place.add_offset(8).load(self, bytecode::Type::Int64); // end
-                        idx_place.load(self, bytecode::Type::Int64); // start
+                        idx_place.add_offset(8).load(self, bytecode::Type::UInt64); // end
+                        idx_place.load(self, bytecode::Type::UInt64); // start
                         self.push_inst(Inst::Binop(Binop::Sub));
                         dest.add_offset(8).store(self);
                     }
@@ -456,7 +456,8 @@ impl<'a> Builder<'a> {
                     id.sf,
                     Path::new(self.db, vec![(id.name, Span::nowhere(self.db))]),
                 ) {
-                    Item::Type { fields, .. } => {
+                    Item::Type { tvar, .. } => {
+                        let fields = struct_fields(self.db, tvar);
                         let field_id = fields.get(&field_name).unwrap().0;
                         let layout = tp.layout(self.db);
                         match layout.fields {
