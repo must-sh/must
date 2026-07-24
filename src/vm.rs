@@ -33,7 +33,7 @@ impl Value {
         match tp {
             bytecode::Type::Int64 => Value::Int64(i64::from_le_bytes(b.try_into().unwrap())),
             bytecode::Type::Bool => Value::Bool(b[0] != 0),
-            bytecode::Type::Ptr => Value::Ref(usize::from_le_bytes(b.try_into().unwrap())),
+            // bytecode::Type::Ptr => Value::Ref(usize::from_le_bytes(b.try_into().unwrap())),
             bytecode::Type::Int128 => Value::Int128(i128::from_le_bytes(b.try_into().unwrap())),
             bytecode::Type::Int32 => todo!(),
             bytecode::Type::Int16 => todo!(),

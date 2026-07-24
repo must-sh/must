@@ -31,6 +31,9 @@ pub fn type_check(db: &dyn Database, c: input::Crate) {
             }
         }
     }
+    for (_, c) in c.dependencies(db) {
+        type_check(db, *c);
+    }
 }
 
 #[salsa::tracked]

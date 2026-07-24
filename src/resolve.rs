@@ -15,8 +15,7 @@ pub(crate) fn parse_type_expr<'db>(
     sf: Source,
 ) -> TypeId<'db> {
     let tp = match tp.data(db) {
-        ast::TypeExprData::Int => TypeData::Int,
-        ast::TypeExprData::Bool => TypeData::Bool,
+        ast::TypeExprData::Primitive(tp) => TypeData::Primitive(tp),
         ast::TypeExprData::Fn(args, ret) => {
             let args = args
                 .into_iter()
@@ -80,25 +79,25 @@ pub fn get_defs<'db>(db: &'db dyn Database, sf: Source) -> ModuleDefs<'db> {
     for def in file.defs(db) {
         match def {
             ast::Def::Fn(func) => {
-                let sig = parse_fn_signature(db, func);
                 let full_name = if func.is_ext(db) {
                     func.name(db).text(db).clone()
                 } else {
                     get_fn_full_name(db, sf, func)
                 };
-                items.insert(func.name(db), Item::Function { sig, full_name });
+                items.insert(
+                    func.name(db),
+                    Item::Function {
+                        def: func,
+                        full_name,
+                    },
+                );
             }
             ast::Def::Struct(tp_def) => {
                 let name = tp_def.name(db);
-                let fields = tp_def
-                    .fields(db)
-                    .into_iter()
-                    .enumerate()
-                    .map(|(id, (name, tp))| (name, (id, parse_type_expr(db, tp, sf))))
-                    .collect();
+
                 let item = Item::Type {
                     tvar: TypeVar { sf, name },
-                    fields,
+                    def: tp_def,
                 };
                 items.insert(name, item);
             }
@@ -134,12 +133,12 @@ pub fn get_fn_full_name<'db>(db: &'db dyn Database, sf: Source, func: FnDef<'db>
 pub enum Item<'db> {
     NotFound,
     Function {
-        sig: FnSig<'db>,
         full_name: String,
+        def: ast::FnDef<'db>,
     },
     Type {
         tvar: TypeVar<'db>,
-        fields: HashMap<Ident<'db>, (usize, TypeId<'db>)>,
+        def: ast::StructDef<'db>,
     },
     Module,
     Crate(input::Crate),

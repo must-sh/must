@@ -18,7 +18,6 @@ impl bytecode::Type {
     pub fn as_cranelift_tp(self) -> ir::Type {
         match self {
             bytecode::Type::Bool => types::I8,
-            bytecode::Type::Ptr => types::I64,
 
             bytecode::Type::Int128 => types::I128,
             bytecode::Type::Int64 => types::I64,
@@ -112,7 +111,7 @@ impl Lowerer {
         match f.ret.abi() {
             bytecode::Abi::Scalar(tp) => sig.returns.push(AbiParam::new(tp.as_cranelift_tp())),
             bytecode::Abi::Struct => sig.params.push(AbiParam::special(
-                bytecode::Type::Ptr.as_cranelift_tp(),
+                bytecode::Type::UInt64.as_cranelift_tp(),
                 ArgumentPurpose::StructReturn,
             )),
             bytecode::Abi::Unit => (),
@@ -123,7 +122,7 @@ impl Lowerer {
                 bytecode::Abi::Scalar(tp) => sig.params.push(AbiParam::new(tp.as_cranelift_tp())),
                 bytecode::Abi::Struct => sig
                     .params
-                    .push(AbiParam::new(bytecode::Type::Ptr.as_cranelift_tp())),
+                    .push(AbiParam::new(bytecode::Type::UInt64.as_cranelift_tp())),
                 bytecode::Abi::Unit => (),
             };
         }

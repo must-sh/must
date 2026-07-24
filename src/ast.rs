@@ -1,6 +1,7 @@
 use salsa::Database;
 
 use crate::{
+    bytecode,
     common::{Binop, Unop},
     input::Source,
 };
@@ -122,8 +123,7 @@ pub struct TypeExprId {
 
 #[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::Update)]
 pub enum TypeExprData<'db> {
-    Int,
-    Bool,
+    Primitive(bytecode::Type),
     Ptr(TypeExprId<'db>, bool),
     Fn(Vec<TypeExprId<'db>>, TypeExprId<'db>),
     Tuple(Vec<TypeExprId<'db>>),
