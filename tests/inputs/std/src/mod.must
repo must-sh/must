@@ -1,6 +1,10 @@
 
+mod math
+
 extern fn must_read() -> int64;
 
 extern fn must_alloc(size: int64) -> []mut int64;
 
 extern fn must_print(x: int64);
+
+extern fn must_printf(x: float64);

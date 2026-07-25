@@ -92,8 +92,8 @@ impl<'a> VM<'a> {
         loop {
             for inst in &f.blocks[current_block].insts {
                 match inst {
-                    Inst::PushInt(n) => self.vstack.push(Value::Int64(*n)),
-                    Inst::Binop(op) => {
+                    Inst::PushInt(n, _) => self.vstack.push(Value::Int64(*n)),
+                    Inst::Binop(op, _) => {
                         use crate::common::Binop::*;
                         use Value::*;
                         let res = match (op, self.vstack.pop().unwrap(), self.vstack.pop().unwrap())
@@ -117,7 +117,7 @@ impl<'a> VM<'a> {
                         };
                         self.vstack.push(res)
                     }
-                    Inst::Unop(op) => {
+                    Inst::Unop(op, _) => {
                         use crate::common::Unop::*;
                         use Value::*;
                         let res = match (op, self.vstack.pop().unwrap()) {

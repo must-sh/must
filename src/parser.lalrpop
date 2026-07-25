@@ -242,6 +242,18 @@ TypeExprData: TypeExprData<'db> = {
     "int32" => TypeExprData::Primitive(bytecode::Type::Int32),
     "int64" => TypeExprData::Primitive(bytecode::Type::Int64),
     "int128" => TypeExprData::Primitive(bytecode::Type::Int128),
+
+    "uint8" => TypeExprData::Primitive(bytecode::Type::UInt8),
+    "uint16" => TypeExprData::Primitive(bytecode::Type::UInt16),
+    "uint32" => TypeExprData::Primitive(bytecode::Type::UInt32),
+    "uint64" => TypeExprData::Primitive(bytecode::Type::UInt64),
+    "uint128" => TypeExprData::Primitive(bytecode::Type::UInt128),
+
+    "float16" => TypeExprData::Primitive(bytecode::Type::Float16),
+    "float32" => TypeExprData::Primitive(bytecode::Type::Float32),
+    "float64" => TypeExprData::Primitive(bytecode::Type::Float64),
+    "float128" => TypeExprData::Primitive(bytecode::Type::Float128),
+
     "bool" => TypeExprData::Primitive(bytecode::Type::Bool),
     "*" <tp: TypeExpr> => TypeExprData::Ptr(tp, false),
     "*" "mut" <tp: TypeExpr> => TypeExprData::Ptr(tp, true),
