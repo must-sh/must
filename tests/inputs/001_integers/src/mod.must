@@ -8,7 +8,17 @@ fn bar() -> int32 {
     1
 }
 
-fn main() -> int64 {
-    let x = 42 in
-    foo(x) + bar()
+struct Point {
+    x: float64,
+    y: float64,
+}
+
+fn radius(p: Point) -> float64 {
+    std::math::sqrt(p.x * p.x + p.y * p.y)
+}
+
+fn main() {
+    let x = 3 in
+    let p = Point .{ x = 3, y = 4 } in
+    std::must_printf(radius(p))
 }

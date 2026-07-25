@@ -17,6 +17,10 @@ void must_print(int64_t x) {
     printf("%ld\n", x);
 }
 
+void must_printf(double x) {
+    printf("%lF\n", x);
+}
+
 slice must_alloc(int64_t size) {
     int64_t* ptr = malloc(sizeof(int64_t) * size);
     slice s = { .ptr = ptr, .len = size };

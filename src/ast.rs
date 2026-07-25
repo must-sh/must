@@ -6,11 +6,9 @@ use crate::{
     input::Source,
 };
 
-#[salsa::tracked(debug)]
-pub struct Span<'db> {
-    #[tracked]
+#[salsa::interned(debug)]
+pub struct Span {
     pub start_byte: usize,
-    #[tracked]
     pub end_byte: usize,
 }
 

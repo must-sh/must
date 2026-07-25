@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use cranelift_codegen::{
     ir::{
         self, AbiParam, ArgumentPurpose, InstBuilder, MemFlags, Signature, StackSlotData,
-        condcodes::IntCC, types,
+        condcodes::{FloatCC, IntCC},
+        immediates::Ieee16,
+        types,
     },
     isa,
     settings::{self, Configurable},
@@ -174,41 +176,112 @@ impl Lowerer {
             b.switch_to_block(block);
             for inst in blk.insts {
                 match inst {
-                    bytecode::Inst::PushInt(n) => {
-                        let v = b.ins().iconst(types::I64, n);
+                    bytecode::Inst::PushInt(n, tp) => {
+                        let v = match tp {
+                            bytecode::Type::Int128 | bytecode::Type::UInt128 => {
+                                b.ins().iconst(types::I128, n)
+                            }
+                            bytecode::Type::Int64 | bytecode::Type::UInt64 => {
+                                b.ins().iconst(types::I64, n)
+                            }
+                            bytecode::Type::Int32 | bytecode::Type::UInt32 => {
+                                b.ins().iconst(types::I32, n)
+                            }
+                            bytecode::Type::Int16 | bytecode::Type::UInt16 => {
+                                b.ins().iconst(types::I16, n)
+                            }
+                            bytecode::Type::Bool | bytecode::Type::Int8 | bytecode::Type::UInt8 => {
+                                b.ins().iconst(types::I8, n)
+                            }
+                            bytecode::Type::Float16 => unimplemented!(),
+                            bytecode::Type::Float32 => b.ins().f32const(n as f32),
+                            bytecode::Type::Float64 => b.ins().f64const(n as f64),
+                            bytecode::Type::Float128 => unimplemented!(),
+                        };
                         stack.push(v);
                     }
                     bytecode::Inst::PushBool(n) => {
                         let v = b.ins().iconst(types::I8, n as i64);
                         stack.push(v);
                     }
-                    bytecode::Inst::Binop(binop) => {
+                    bytecode::Inst::Binop(binop, tp) => {
                         use crate::common::Binop::*;
                         let v2 = stack.pop().unwrap();
                         let v1 = stack.pop().unwrap();
-                        let val = match binop {
-                            Add => b.ins().iadd(v1, v2),
-                            Sub => b.ins().isub(v1, v2),
-                            Mul => b.ins().imul(v1, v2),
-                            Div => b.ins().sdiv(v1, v2),
-                            Mod => b.ins().srem(v1, v2),
-                            Eq => b.ins().icmp(IntCC::Equal, v1, v2),
-                            Lt => b.ins().icmp(IntCC::SignedLessThan, v1, v2),
-                            Gt => b.ins().icmp(IntCC::SignedGreaterThan, v1, v2),
-                            Le => b.ins().icmp(IntCC::SignedLessThanOrEqual, v1, v2),
-                            Ge => b.ins().icmp(IntCC::SignedGreaterThanOrEqual, v1, v2),
-                            NEq => b.ins().icmp(IntCC::NotEqual, v1, v2),
-                            And => b.ins().band(v1, v2),
-                            Or => b.ins().bor(v1, v2),
+                        let val = match tp {
+                            bytecode::Type::Int128
+                            | bytecode::Type::Int64
+                            | bytecode::Type::Int32
+                            | bytecode::Type::Int16
+                            | bytecode::Type::Int8 => match binop {
+                                Add => b.ins().iadd(v1, v2),
+                                Sub => b.ins().isub(v1, v2),
+                                Mul => b.ins().imul(v1, v2),
+                                Div => b.ins().sdiv(v1, v2),
+                                Mod => b.ins().srem(v1, v2),
+                                Eq => b.ins().icmp(IntCC::Equal, v1, v2),
+                                Lt => b.ins().icmp(IntCC::SignedLessThan, v1, v2),
+                                Gt => b.ins().icmp(IntCC::SignedGreaterThan, v1, v2),
+                                Le => b.ins().icmp(IntCC::SignedLessThanOrEqual, v1, v2),
+                                Ge => b.ins().icmp(IntCC::SignedGreaterThanOrEqual, v1, v2),
+                                NEq => b.ins().icmp(IntCC::NotEqual, v1, v2),
+                                And => b.ins().band(v1, v2),
+                                Or => b.ins().bor(v1, v2),
+                            },
+                            bytecode::Type::UInt128
+                            | bytecode::Type::UInt64
+                            | bytecode::Type::UInt32
+                            | bytecode::Type::UInt16
+                            | bytecode::Type::UInt8 => match binop {
+                                Add => b.ins().iadd(v1, v2),
+                                Sub => b.ins().isub(v1, v2),
+                                Mul => b.ins().imul(v1, v2),
+                                Div => b.ins().udiv(v1, v2),
+                                Mod => b.ins().urem(v1, v2),
+                                Eq => b.ins().icmp(IntCC::Equal, v1, v2),
+                                Lt => b.ins().icmp(IntCC::UnsignedLessThan, v1, v2),
+                                Gt => b.ins().icmp(IntCC::UnsignedGreaterThan, v1, v2),
+                                Le => b.ins().icmp(IntCC::UnsignedLessThanOrEqual, v1, v2),
+                                Ge => b.ins().icmp(IntCC::UnsignedGreaterThanOrEqual, v1, v2),
+                                NEq => b.ins().icmp(IntCC::NotEqual, v1, v2),
+                                And => b.ins().band(v1, v2),
+                                Or => b.ins().bor(v1, v2),
+                            },
+                            bytecode::Type::Float16
+                            | bytecode::Type::Float32
+                            | bytecode::Type::Float64
+                            | bytecode::Type::Float128 => match binop {
+                                Add => b.ins().fadd(v1, v2),
+                                Sub => b.ins().fsub(v1, v2),
+                                Mul => b.ins().fmul(v1, v2),
+                                Div => b.ins().fdiv(v1, v2),
+                                Mod => panic!(),
+                                Eq => b.ins().fcmp(FloatCC::Equal, v1, v2),
+                                Lt => b.ins().fcmp(FloatCC::LessThan, v1, v2),
+                                Gt => b.ins().fcmp(FloatCC::GreaterThan, v1, v2),
+                                Le => b.ins().fcmp(FloatCC::LessThanOrEqual, v1, v2),
+                                Ge => b.ins().fcmp(FloatCC::GreaterThanOrEqual, v1, v2),
+                                NEq => b.ins().fcmp(FloatCC::NotEqual, v1, v2),
+                                And => b.ins().band(v1, v2),
+                                Or => b.ins().bor(v1, v2),
+                            },
+                            bytecode::Type::Bool => todo!(),
                         };
                         stack.push(val)
                     }
-                    bytecode::Inst::Unop(unop) => {
+                    bytecode::Inst::Unop(unop, tp) => {
                         use crate::common::Unop::*;
                         let v1 = stack.pop().unwrap();
-                        let val = match unop {
-                            Not => b.ins().bnot(v1),
-                            Neg => b.ins().ineg(v1),
+                        let val = match (unop, tp) {
+                            (Not, _) => b.ins().bnot(v1),
+                            (
+                                Neg,
+                                bytecode::Type::Float16
+                                | bytecode::Type::Float32
+                                | bytecode::Type::Float64
+                                | bytecode::Type::Float128,
+                            ) => b.ins().fneg(v1),
+                            (Neg, _) => b.ins().ineg(v1),
                         };
                         stack.push(val)
                     }
