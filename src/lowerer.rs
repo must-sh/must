@@ -84,7 +84,7 @@ impl Place {
                     offset: 0,
                     tp: bytecode::Type::UInt64,
                 });
-                b.push_inst(Inst::PushInt(offset as i64));
+                b.push_inst(Inst::PushInt(offset as i64, bytecode::Type::Int64));
                 b.push_inst(Inst::CapOffset)
             }
         };
@@ -200,8 +200,11 @@ impl<'a> Builder<'a> {
                     let idx_place = self.lower_into_tmp(e2);
 
                     idx_place.load(self, bytecode::Type::UInt64); // start
-                    self.push_inst(Inst::PushInt(elem_layout.size() as i64));
-                    self.push_inst(Inst::Binop(Binop::Mul));
+                    self.push_inst(Inst::PushInt(
+                        elem_layout.size() as i64,
+                        bytecode::Type::UInt64,
+                    ));
+                    self.push_inst(Inst::Binop(Binop::Mul, bytecode::Type::UInt64));
 
                     self.push_inst(Inst::CapOffset);
                     let place = self.store_ptr();
@@ -219,28 +222,29 @@ impl<'a> Builder<'a> {
     pub fn lower(&mut self, e: ExprId<'a>, dest: Place) {
         match e.data(self.db) {
             ExprData::Number(n) => {
-                self.push_inst(Inst::PushInt(n));
+                let tp = self.get_layout_of_expr(e).as_primitive().unwrap();
+                self.push_inst(Inst::PushInt(n, tp));
                 dest.store(self);
             }
             ExprData::Binop(op, e1, e2) => {
                 let x = self.lower_into_tmp(e1);
                 let y = self.lower_into_tmp(e2);
 
-                let tp_x = self.get_layout_of_expr(e1).as_primitive().unwrap();
-                let tp_y = self.get_layout_of_expr(e2).as_primitive().unwrap();
+                let tp = self.get_layout_of_expr(e1).as_primitive().unwrap();
 
-                x.load(self, tp_x);
-                y.load(self, tp_y);
-                self.push_inst(Inst::Binop(op));
+                x.load(self, tp);
+                y.load(self, tp);
+
+                self.push_inst(Inst::Binop(op, tp));
                 dest.store(self);
             }
             ExprData::Unop(op, e1) => {
                 let x = self.lower_into_tmp(e1);
 
-                let tp_x = self.get_layout_of_expr(e1).as_primitive().unwrap();
+                let tp = self.get_layout_of_expr(e1).as_primitive().unwrap();
 
-                x.load(self, tp_x);
-                self.push_inst(Inst::Unop(op));
+                x.load(self, tp);
+                self.push_inst(Inst::Unop(op, tp));
                 dest.store(self);
             }
             ExprData::Let(pat, e1, e2) => {
@@ -417,8 +421,11 @@ impl<'a> Builder<'a> {
                 let idx_place = self.lower_into_tmp(e2);
 
                 idx_place.load(self, bytecode::Type::UInt64); // start
-                self.push_inst(Inst::PushInt(elem_layout.size() as i64));
-                self.push_inst(Inst::Binop(Binop::Mul));
+                self.push_inst(Inst::PushInt(
+                    elem_layout.size() as i64,
+                    bytecode::Type::UInt64,
+                ));
+                self.push_inst(Inst::Binop(Binop::Mul, bytecode::Type::UInt64));
 
                 self.push_inst(Inst::CapOffset);
 
@@ -431,7 +438,7 @@ impl<'a> Builder<'a> {
                         dest.store(self);
                         idx_place.add_offset(8).load(self, bytecode::Type::UInt64); // end
                         idx_place.load(self, bytecode::Type::UInt64); // start
-                        self.push_inst(Inst::Binop(Binop::Sub));
+                        self.push_inst(Inst::Binop(Binop::Sub, bytecode::Type::UInt64));
                         dest.add_offset(8).store(self);
                     }
                     _ => panic!(),
