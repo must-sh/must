@@ -1,0 +1,8 @@
+# Write a string, followed by a newline, to stdout.
+extern fn puts(s: *uint8) -> int32;
+
+# Write a character to stdout.
+extern fn putchar(c: int32) -> int32;
+
+# Must doesn't support varargs so following functions aren't listed:
+# extern fn printf(s: *uint8, ...) -> int32;

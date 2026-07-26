@@ -1,13 +1,13 @@
 
 struct S {
-    x: int,
-    y: int,
+    x: int64,
+    y: int64,
 }
 
 struct T {
     s: S,
     b: bool,
-    id: int,
+    id: int64,
 }
 
 fn modify(t: *mut T) {
