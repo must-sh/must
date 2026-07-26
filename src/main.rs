@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::read_to_string, path::PathBuf, process::exit};
+use std::{fs::read_to_string, path::PathBuf, process::exit};
 
 use clap::Parser;
 use salsa::DatabaseImpl;

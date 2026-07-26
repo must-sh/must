@@ -179,6 +179,7 @@ Expr40Data: ExprData<'db> = {
     <id: Ident> => ExprData::Var(id),
     <e: Expr40> "(" <args: CommaSep<Expr0>> ")" => ExprData::FnCall(e, args),
     <n: Num> => ExprData::Number(n),
+    <s: StrLit> => ExprData::Str(s),
     "true" => ExprData::Bool(true),
     "false" => ExprData::Bool(false),
 

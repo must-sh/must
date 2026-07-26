@@ -1,0 +1,6 @@
+
+import "std.must"
+
+fn main(argc: int32, argv: []*uint8) {
+    printf(argv[1])
+}

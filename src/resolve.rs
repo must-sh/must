@@ -4,7 +4,7 @@ use crate::{
     input::{self, Source},
     tp::{FnSig, TypeData, TypeId},
 };
-use salsa::{Accumulator, Database};
+use salsa::Database;
 use std::collections::HashMap;
 
 #[derive(Debug, PartialEq, Clone, salsa::Update)]

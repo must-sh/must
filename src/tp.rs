@@ -5,7 +5,7 @@ use salsa::{Accumulator, Database};
 
 use crate::{
     ast::{ExprData, ExprId, Ident, PatternData, PatternId, Span},
-    bytecode::{self},
+    bytecode::{self, Type::UInt8},
     diagnostic::Diagnostic,
     input::Source,
     resolve::{self, Item, parse_fn_signature},
@@ -341,7 +341,7 @@ impl<'a> Env<'a> {
     fn bind_var(&mut self, var: InferVar<'a>, ty: TypeId<'a>) -> bool {
         if let InferValue::Numeric = self.unif_table.probe_value(var) {
             match ty.data(self.db) {
-                TypeData::Primitive(p) => {} // Assuming `is_numeric` exists
+                TypeData::Primitive(_) => {} // Assuming `is_numeric` exists
                 TypeData::Infer(_) => {}     // Binding to another infer var is fine
                 _ => return false,           // Failed constraint
             }
@@ -427,7 +427,13 @@ impl<'a> Env<'a> {
         let db = self.db;
         let (tp, is_mut) = match e.data(db) {
             ExprData::Number(_) => (self.new_numeric_var(), false),
-            ExprData::Str(_) => todo!(),
+            ExprData::Str(s) => {
+                let n = s.text(db).len();
+                (
+                    TypeData::Array(n + 1, TypeData::Primitive(UInt8).wrap(db)).wrap(db),
+                    false,
+                )
+            }
             ExprData::Binop(op, expr, expr1) => {
                 use crate::common::Binop::*;
                 let tp = match op {
@@ -488,7 +494,10 @@ impl<'a> Env<'a> {
             }
             ExprData::Var(x) => match self.get_var(x) {
                 Some(VarBinding { tp, is_mut }) => (tp, is_mut),
-                None => (TypeData::Error.wrap(db), true),
+                None => {
+                    Diagnostic::unbound_var(db, e.span(db), x, self.source);
+                    (TypeData::Error.wrap(db), true)
+                }
             },
             ExprData::FnCall(fn_expr, exprs) => {
                 let (tp, _) = self.infer_expr(fn_expr);

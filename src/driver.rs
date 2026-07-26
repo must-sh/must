@@ -2,14 +2,7 @@ use std::{collections::HashMap, fs::read_to_string};
 
 use salsa::Database;
 
-use crate::{
-    ast,
-    bytecode::{self, FuncSig},
-    input::{self, resolve_import},
-    lowerer,
-    resolve::{self, parse_fn_signature},
-    tp,
-};
+use crate::{ast, bytecode, input, lowerer, resolve, tp};
 
 #[salsa::tracked]
 pub fn type_check(db: &dyn Database, sf: input::Source) {
