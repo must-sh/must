@@ -1,6 +1,0 @@
-mod foo
-
-fn main() {
-    let x = std::must_read() in
-    std::must_print(foo::double(x))
-}

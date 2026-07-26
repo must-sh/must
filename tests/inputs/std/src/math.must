@@ -1,2 +1,0 @@
-
-extern fn sqrt(x: float64) -> float64;

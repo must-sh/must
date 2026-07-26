@@ -1,9 +1,9 @@
-use std::{collections::HashMap, fs::read_to_string, process::exit};
+use std::{collections::HashMap, fs::read_to_string, path::PathBuf, process::exit};
 
 use clap::Parser;
 use salsa::DatabaseImpl;
 
-use crate::{diagnostic::Diagnostic, vm::VM};
+use crate::{diagnostic::Diagnostic, input::Source, vm::VM};
 
 mod ast;
 mod bytecode;
@@ -24,7 +24,7 @@ struct Cli {
     #[command(subcommand)]
     cmd: Command,
     #[arg(long)]
-    path: Option<String>,
+    path: String,
 }
 
 #[derive(Debug, Clone, clap::Subcommand)]
@@ -43,37 +43,10 @@ enum Ir {
     Bytecode,
 }
 
-#[derive(Debug, serde::Deserialize)]
-struct CrateConfig {
-    package: PackageInfo,
-    dependencies: HashMap<String, Dependency>,
-}
-
-#[derive(Debug, serde::Deserialize)]
-struct PackageInfo {
-    name: String,
-    owner: String,
-    kind: PackageKind,
-}
-
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "lowercase")]
-enum PackageKind {
-    Exe,
-    Lib,
-}
-
-#[derive(Debug, serde::Deserialize)]
-struct Dependency {
-    path: String,
-}
-
 fn main() {
     let cli = Cli::parse();
     let db = &DatabaseImpl::new();
-    let root_dir = cli.path.unwrap_or("".into());
-    let cfg_file = format!("{}/must.toml", root_dir);
-    let cfg: CrateConfig = toml::from_str(&read_to_string(cfg_file).unwrap()).unwrap();
+    let root_dir = cli.path;
     let prog = check_and_compile(db, &root_dir);
     match cli.cmd {
         Command::Run => {
@@ -86,11 +59,9 @@ fn main() {
         Command::Compile => {
             let obj = codegen::compile(prog, false);
             let bytes = obj.emit().unwrap();
-            let target = root_dir + "build/";
-            if !std::fs::exists(&target).unwrap() {
-                std::fs::create_dir(&target).unwrap();
-            }
-            std::fs::write(target + "a.out", bytes).unwrap()
+            let mut p = PathBuf::from(root_dir);
+            p.set_extension("o");
+            std::fs::write(p, bytes).unwrap()
         }
         Command::Print { ir } => {
             match ir {
@@ -105,10 +76,11 @@ fn main() {
     }
 }
 
-fn check_and_compile(db: &DatabaseImpl, root_dir: &String) -> bytecode::Prog {
-    let c = get_crate(db, root_dir);
-    driver::type_check(db, c);
-    let diags = driver::type_check::accumulated::<Diagnostic>(db, c);
+fn check_and_compile(db: &DatabaseImpl, filename: &String) -> bytecode::Prog {
+    let text = read_to_string(&filename).expect("couldnt open file");
+    let sf = Source::new(db, text.clone(), filename.into());
+    driver::type_check(db, sf);
+    let diags = driver::type_check::accumulated::<Diagnostic>(db, sf);
     for diag in &diags {
         let sf = diag.source;
         let file_name = &sf.file_name(db).to_str().unwrap().to_string();
@@ -120,29 +92,5 @@ fn check_and_compile(db: &DatabaseImpl, root_dir: &String) -> bytecode::Prog {
         eprintln!("errors occured, compilation aborted");
         exit(-1);
     }
-    driver::compile(db, c)
-}
-
-fn get_crate(db: &DatabaseImpl, root_dir: &String) -> input::Crate {
-    let cfg_file = format!("{}/must.toml", root_dir);
-    let p = std::path::Path::new(&cfg_file).canonicalize().unwrap();
-    println!("{}: {:?}", cfg_file, p);
-    let cfg: CrateConfig = toml::from_str(&read_to_string(cfg_file).unwrap()).unwrap();
-    let deps = get_deps(db, root_dir, cfg);
-    input::Crate::new(db, root_dir.clone().into(), deps)
-}
-
-fn get_deps(
-    db: &DatabaseImpl,
-    root_dir: &String,
-    cfg: CrateConfig,
-) -> HashMap<String, input::Crate> {
-    let mut map = HashMap::new();
-    for (name, dep) in cfg.dependencies {
-        let mut path = root_dir.clone();
-        path += &dep.path;
-        let c = get_crate(db, &path);
-        map.insert(name, c);
-    }
-    map
+    driver::compile(db, sf)
 }
