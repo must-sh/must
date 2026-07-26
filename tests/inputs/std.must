@@ -1,9 +1,0 @@
-extern fn must_read() -> int64;
-
-extern fn must_alloc(size: uint64) -> []mut int64;
-
-extern fn must_print(x: int64);
-
-extern fn must_printf(x: float64);
-
-extern fn printf(s: *uint8);
