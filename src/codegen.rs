@@ -4,7 +4,6 @@ use cranelift_codegen::{
     ir::{
         self, AbiParam, ArgumentPurpose, InstBuilder, MemFlags, Signature, StackSlotData,
         condcodes::{FloatCC, IntCC},
-        immediates::Ieee16,
         types,
     },
     isa,

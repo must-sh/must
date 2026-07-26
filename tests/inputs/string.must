@@ -1,0 +1,6 @@
+import "std.must"
+
+fn main() {
+    let s = "hello, world!" in
+    printf(&s[0])
+}

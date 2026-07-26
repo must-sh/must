@@ -1,5 +1,3 @@
-use salsa::Database;
-
 use crate::{
     common::{Binop, Unop},
     input::Source,
