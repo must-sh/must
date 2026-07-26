@@ -1,25 +1,19 @@
 use std::{collections::HashMap, marker::PhantomData};
 
-use ena::unify::{InPlaceUnificationTable, NoError, Snapshot};
+use ena::unify::{InPlaceUnificationTable, NoError};
 use salsa::{Accumulator, Database};
 
 use crate::{
-    ast::{ExprData, ExprId, Ident, Path, PatternData, PatternId, Span},
+    ast::{ExprData, ExprId, Ident, PatternData, PatternId, Span},
     bytecode::{self},
     diagnostic::Diagnostic,
     input::Source,
-    resolve::{self, Item, parse_fn_signature, parse_type_expr},
+    resolve::{self, Item, parse_fn_signature},
 };
 
 #[salsa::interned(debug)]
 pub struct TypeId {
     pub data: TypeData<'db>,
-}
-
-#[derive(Debug, Hash, Eq, PartialEq, Clone, Copy, salsa::Update)]
-pub struct TypeVar<'db> {
-    pub sf: Source,
-    pub name: Ident<'db>,
 }
 
 use ena::unify::{UnifyKey, UnifyValue};
@@ -79,7 +73,7 @@ pub enum TypeData<'db> {
     Ptr(TypeId<'db>, bool),
     Slice(TypeId<'db>, bool),
     Tuple(Vec<TypeId<'db>>),
-    Var(TypeVar<'db>),
+    Var(Source, Ident<'db>),
     Array(usize, TypeId<'db>),
 }
 
@@ -107,8 +101,8 @@ impl<'db> TypeId<'db> {
             TypeData::Tuple(items) => bytecode::Layout::strct(
                 &items.iter().map(|tp| tp.layout(db)).collect::<Vec<_>>()[..],
             ),
-            TypeData::Var(tv) => {
-                let fields = struct_fields(db, tv);
+            TypeData::Var(sf, tv) => {
+                let fields = struct_fields(db, sf, tv);
                 let mut fields = fields
                     .iter()
                     .map(|(_, (id, tp))| (id, tp))
@@ -128,14 +122,15 @@ impl<'db> TypeId<'db> {
 
 pub fn struct_fields<'a>(
     db: &'a dyn Database,
-    tv: TypeVar<'a>,
+    sf: Source,
+    tv: Ident<'a>,
 ) -> HashMap<Ident<'a>, (usize, TypeId<'a>)> {
-    match resolve::get_item(db, tv.sf, Path::new(db, vec![(tv.name, Span::nowhere(db))])) {
-        Item::Type { def, .. } => def
+    match resolve::get_item(db, sf, tv) {
+        Some(Item::Type { def, .. }) => def
             .fields(db)
             .into_iter()
             .enumerate()
-            .map(|(id, (name, tp))| (name, (id, parse_type_expr(db, tp, tv.sf))))
+            .map(|(id, (name, tp))| (name, (id, tp)))
             .collect(),
         _ => panic!(),
     }
@@ -374,7 +369,7 @@ impl<'a> Env<'a> {
 
             (TypeData::Infer(var), _) => self.bind_var(var, into),
             (_, TypeData::Infer(var)) => self.bind_var(var, from),
-            (TypeData::Var(id1), TypeData::Var(id2)) => id1 == id2,
+            (TypeData::Var(sf1, id1), TypeData::Var(sf2, id2)) => sf1 == sf2 && id1 == id2,
             (TypeData::Tuple(tps1), TypeData::Tuple(tps2)) => {
                 tps1.len() == tps2.len()
                     && tps1
@@ -432,6 +427,7 @@ impl<'a> Env<'a> {
         let db = self.db;
         let (tp, is_mut) = match e.data(db) {
             ExprData::Number(_) => (self.new_numeric_var(), false),
+            ExprData::Str(_) => todo!(),
             ExprData::Binop(op, expr, expr1) => {
                 use crate::common::Binop::*;
                 let tp = match op {
@@ -580,8 +576,8 @@ impl<'a> Env<'a> {
                 self.infer_expr(e2)
             }
             ExprData::Struct(name, mut items) => {
-                let tp = if let Some(tv) = self.get_tvar(name) {
-                    let fields = struct_fields(db, tv);
+                let tp = {
+                    let fields = struct_fields(db, self.source, name);
                     for (field, tp) in fields {
                         let mut iter = items.extract_if(.., |(name, _)| *name == field);
                         match (iter.next(), iter.next()) {
@@ -598,11 +594,7 @@ impl<'a> Env<'a> {
                             }
                         }
                     }
-                    TypeData::Var(tv).wrap(db)
-                } else {
-                    Diagnostic::unknown_type(db, e.span(db), name.join(db), self.source)
-                        .accumulate(db);
-                    TypeData::Error.wrap(db)
+                    TypeData::Var(self.source, name).wrap(db)
                 };
                 (tp, false)
             }
@@ -610,8 +602,8 @@ impl<'a> Env<'a> {
                 let (tp, is_mut) = self.infer_expr(expr);
                 match self.weak_resolve(tp).data(db) {
                     TypeData::Error => (TypeData::Error.wrap(db), true),
-                    TypeData::Var(tv) => {
-                        if let Some(tp) = struct_fields(db, tv).get(&ident) {
+                    TypeData::Var(sf, tv) => {
+                        if let Some(tp) = struct_fields(db, sf, tv).get(&ident) {
                             (tp.1, is_mut)
                         } else {
                             Diagnostic::no_field_on_type(db, e.span(db), ident, tp, self.source)
@@ -710,14 +702,14 @@ impl<'a> Env<'a> {
         self.scopes.last_mut().unwrap().insert(arg, binding);
     }
 
-    pub fn get_var(&self, x: Path<'a>) -> Option<VarBinding<'a>> {
-        if let [(id, _)] = x.data(self.db)[..]
-            && let Some(v) = self.scopes.iter().rev().find_map(|scope| scope.get(&id))
-        {
-            Some(v.clone())
-        } else {
-            match resolve::get_item(self.db, self.source, x) {
-                Item::Function { def, .. } => {
+    pub fn get_var(&self, x: Ident<'a>) -> Option<VarBinding<'a>> {
+        self.scopes
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(&x))
+            .cloned()
+            .or_else(|| match resolve::get_item(self.db, self.source, x) {
+                Some(Item::Function { def, .. }) => {
                     let sig = parse_fn_signature(self.db, def);
                     Some(VarBinding {
                         tp: TypeData::Fn(sig).wrap(self.db),
@@ -725,8 +717,7 @@ impl<'a> Env<'a> {
                     })
                 }
                 _ => None,
-            }
-        }
+            })
     }
 
     pub fn check_pat(
@@ -780,7 +771,7 @@ impl<'a> Env<'a> {
                 InferValue::Bound(tp) => self.zonk(tp),
                 InferValue::Unbound => TypeData::Error.wrap(db),
             },
-            TypeData::Var(_) | TypeData::Error | TypeData::Primitive(_) | TypeData::Range => tp,
+            TypeData::Var(_, _) | TypeData::Error | TypeData::Primitive(_) | TypeData::Range => tp,
             TypeData::Fn(fn_sig) => {
                 let args = fn_sig.args.into_iter().map(|tp| self.zonk(tp)).collect();
                 let ret = self.zonk(fn_sig.ret);
@@ -795,13 +786,6 @@ impl<'a> Env<'a> {
                 TypeData::Tuple(tps.into_iter().map(|tp| self.zonk(tp)).collect()).wrap(db)
             }
             TypeData::Array(n, elem_tp) => TypeData::Array(n, self.zonk(elem_tp)).wrap(db),
-        }
-    }
-
-    fn get_tvar(&self, x: Path<'a>) -> Option<TypeVar<'a>> {
-        match resolve::get_item(self.db, self.source, x) {
-            Item::Type { tvar, .. } => Some(tvar),
-            _ => None,
         }
     }
 }

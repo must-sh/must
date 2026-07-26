@@ -213,7 +213,8 @@ impl Lowerer {
                             | bytecode::Type::Int64
                             | bytecode::Type::Int32
                             | bytecode::Type::Int16
-                            | bytecode::Type::Int8 => match binop {
+                            | bytecode::Type::Int8
+                            | bytecode::Type::Bool => match binop {
                                 Add => b.ins().iadd(v1, v2),
                                 Sub => b.ins().isub(v1, v2),
                                 Mul => b.ins().imul(v1, v2),
@@ -265,7 +266,6 @@ impl Lowerer {
                                 And => b.ins().band(v1, v2),
                                 Or => b.ins().bor(v1, v2),
                             },
-                            bytecode::Type::Bool => todo!(),
                         };
                         stack.push(val)
                     }
