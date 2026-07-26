@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use salsa::Database;
 
 use crate::{
-    ast::{self, ExprData, ExprId, Ident, PatternData, PatternId, Span},
+    ast::{self, ExprData, ExprId, Ident, PatternData, PatternId},
     bytecode::{self, Block, Func, FuncSig, Inst, Terminator},
     common::Binop,
     driver::type_check_func,
@@ -227,7 +227,13 @@ impl<'a> Builder<'a> {
                 dest.store(self);
             }
             ExprData::Str(s) => {
-                todo!()
+                let bytes = s.text(self.db).as_bytes();
+                for i in 0..bytes.len() {
+                    self.push_inst(Inst::PushInt(bytes[i] as i64, bytecode::Type::UInt8));
+                    dest.add_offset(i as u32).store(self);
+                }
+                self.push_inst(Inst::PushInt(0, bytecode::Type::UInt8));
+                dest.add_offset(bytes.len() as u32).store(self);
             }
             ExprData::Binop(op, e1, e2) => {
                 let x = self.lower_into_tmp(e1);
@@ -373,7 +379,7 @@ impl<'a> Builder<'a> {
             }
             ExprData::Struct(name, exprs) => {
                 let s = self.func.sf(self.db);
-                let fields = tp::struct_fields(self.db, self.func.sf(self.db), name);
+                let fields = tp::struct_fields(self.db, s, name);
                 let mut fields = fields
                     .iter()
                     .map(|(name, (id, _))| (id, name))
