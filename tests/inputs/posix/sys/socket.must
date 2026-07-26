@@ -1,0 +1,61 @@
+
+struct SockAddr {
+    sa_family: int16,
+    sa_data: [14]uint8,
+}
+
+struct SockAddrIn {
+    sin_family: int16,
+    sin_port: uint16,
+    sin_addr: uint32,
+    sin_zero: [8]uint8,
+}
+
+struct SockAddrIn6 {
+    sin6_family: int16,
+    sin6_port: uint16,
+    sin6_flowinfo: uint32,
+    sin6_addr: [16]uint8,
+    sin6_scope_id: uint32,
+}
+
+struct SockAddrUn {
+    sun_family: int16,
+    sun_path: [108]uint8,
+}
+
+struct SockAddrStorage {
+    ss_family: int16,
+    __ss_padding: [126]uint8,
+}
+
+extern fn socket(domain: int32, type_: int32, protocol: int32) -> int32;
+extern fn bind(sockfd: int32, addr: *SockAddr, addrlen: uint32) -> int32;
+extern fn listen(sockfd: int32, backlog: int32) -> int32;
+extern fn accept(sockfd: int32, addr: *mut SockAddr, addrlen: *mut uint32) -> int32;
+extern fn connect(sockfd: int32, addr: *SockAddr, addrlen: uint32) -> int32;
+extern fn setsockopt(
+    sockfd: int32,
+    level: int32,
+    optname: int32,
+    optval: *uint8,
+    optlen: uint32
+) -> int32;
+
+extern fn sendto(
+    sockfd: int32,
+    buf: *uint8,
+    len: uint64,
+    flags: int32,
+    dest_addr: *SockAddr,
+    addrlen: uint32
+) -> int64;
+
+extern fn recvfrom(
+    sockfd: int32,
+    buf: *mut uint8,
+    len: uint64,
+    flags: int32,
+    src_addr: *mut SockAddr,
+    addrlen: *mut uint32
+) -> int64;
