@@ -9,21 +9,10 @@ use crate::{ast::File, diagnostic::Diagnostic, parser};
 
 #[salsa::input(debug)]
 pub struct Source {
-    pub c: Crate,
     #[returns(ref)]
     pub text: String,
     #[returns(ref)]
-    pub module_path: Vec<String>,
-    #[returns(ref)]
     pub file_name: PathBuf,
-}
-
-#[salsa::input(debug)]
-pub struct Crate {
-    #[returns(ref)]
-    pub root_dir: PathBuf,
-    #[returns(ref)]
-    pub dependencies: HashMap<String, Crate>,
 }
 
 #[salsa::tracked]
@@ -38,13 +27,14 @@ pub fn parse_file<'db>(db: &'db dyn Database, source: Source) -> File<'db> {
     }
 }
 
-pub fn get_source<'db>(db: &'db dyn Database, c: Crate, path: Vec<String>) -> Option<Source> {
-    let root = c.root_dir(db);
-    let physical_path = resolve_module_path(root, &path)?;
+pub fn resolve_import<'db>(db: &'db dyn Database, sf: Source, path: String) -> Option<Source> {
+    // let root = c.root_dir(db);
+    // let physical_path = resolve_module_path(root, &path)?;
 
-    let text = std::fs::read_to_string(&physical_path).ok()?;
+    // let text = std::fs::read_to_string(&physical_path).ok()?;
 
-    Some(Source::new(db, c, text, path, physical_path))
+    // Some(Source::new(db, c, text, path, physical_path))
+    todo!()
 }
 
 /// Resolves a logical module path (e.g., ["ast", "parser"]) into a physical file path.
@@ -81,4 +71,51 @@ pub fn resolve_module_path(root: &Path, module_path: &[String]) -> Option<PathBu
     } else {
         None
     }
+}
+
+/// TODO: enable reporting string errors through the parser.
+/// Now it will panic if this function doesn't succeed
+pub fn unescape_json_string(s: &str) -> Result<String, String> {
+    // Strip surrounding quotes
+    let raw = &s[1..s.len() - 1];
+
+    let mut result = String::new();
+    let mut chars = raw.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('"') => result.push('"'),
+                Some('\\') => result.push('\\'),
+                Some('/') => result.push('/'),
+                Some('b') => result.push('\u{0008}'),
+                Some('f') => result.push('\u{000C}'),
+                Some('n') => result.push('\n'),
+                Some('r') => result.push('\r'),
+                Some('t') => result.push('\t'),
+                Some('u') => {
+                    // Expect 4 hex digits
+                    let code: String = chars.by_ref().take(4).collect();
+                    if code.len() == 4 {
+                        if let Ok(num) = u16::from_str_radix(&code, 16) {
+                            if let Some(ch) = char::from_u32(num as u32) {
+                                result.push(ch);
+                            } else {
+                                return Err(format!("Invalid unicode escape: {}", code));
+                            }
+                        } else {
+                            return Err(format!("Bad hex in unicode escape: {}", code));
+                        }
+                    } else {
+                        return Err("Incomplete unicode escape".into());
+                    }
+                }
+                Some(other) => return Err(format!("Invalid escape: \\{}", other)),
+                None => return Err("Incomplete escape".into()),
+            }
+        } else {
+            result.push(c);
+        }
+    }
+
+    Ok(result)
 }

@@ -3,12 +3,12 @@ use std::collections::HashMap;
 use salsa::Database;
 
 use crate::{
-    ast::{self, ExprData, ExprId, Ident, Path, PatternData, PatternId, Span},
+    ast::{self, ExprData, ExprId, Ident, PatternData, PatternId, Span},
     bytecode::{self, Block, Func, FuncSig, Inst, Terminator},
     common::Binop,
     driver::type_check_func,
-    resolve::{self, Item, parse_type_expr},
-    tp::{self, FnSig, TypeData, TypeId, struct_fields},
+    resolve::{self, Item},
+    tp::{self, TypeData, TypeId, struct_fields},
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -226,6 +226,9 @@ impl<'a> Builder<'a> {
                 self.push_inst(Inst::PushInt(n, tp));
                 dest.store(self);
             }
+            ExprData::Str(s) => {
+                todo!()
+            }
             ExprData::Binop(op, e1, e2) => {
                 let x = self.lower_into_tmp(e1);
                 let y = self.lower_into_tmp(e2);
@@ -370,10 +373,7 @@ impl<'a> Builder<'a> {
             }
             ExprData::Struct(name, exprs) => {
                 let s = self.func.sf(self.db);
-                let fields = match resolve::get_item(self.db, s, name) {
-                    Item::Type { tvar, .. } => tp::struct_fields(self.db, tvar),
-                    _ => panic!(),
-                };
+                let fields = tp::struct_fields(self.db, self.func.sf(self.db), name);
                 let mut fields = fields
                     .iter()
                     .map(|(name, (id, _))| (id, name))
@@ -457,21 +457,12 @@ impl<'a> Builder<'a> {
                 assert_eq!(field_name.text(self.db), "len");
                 8
             }
-            TypeData::Var(id) => {
-                match resolve::get_item(
-                    self.db,
-                    id.sf,
-                    Path::new(self.db, vec![(id.name, Span::nowhere(self.db))]),
-                ) {
-                    Item::Type { tvar, .. } => {
-                        let fields = struct_fields(self.db, tvar);
-                        let field_id = fields.get(&field_name).unwrap().0;
-                        let layout = tp.layout(self.db);
-                        match layout.fields {
-                            bytecode::Fields::Struct { fields } => fields[field_id].0,
-                            _ => panic!(),
-                        }
-                    }
+            TypeData::Var(sf, id) => {
+                let fields = struct_fields(self.db, sf, id);
+                let field_id = fields.get(&field_name).unwrap().0;
+                let layout = tp.layout(self.db);
+                match layout.fields {
+                    bytecode::Fields::Struct { fields } => fields[field_id].0,
                     _ => panic!(),
                 }
             }
@@ -516,7 +507,6 @@ impl<'a> Builder<'a> {
         let mut args = vec![];
 
         for (arg, tp) in self.func.args(self.db).into_iter().rev() {
-            let tp = parse_type_expr(self.db, tp, self.func.sf(self.db));
             let layout = {
                 let this = &self;
                 tp.layout(this.db)
@@ -538,11 +528,7 @@ impl<'a> Builder<'a> {
         }
 
         let ret = if let Some(tp) = self.func.ret(self.db) {
-            let tp = parse_type_expr(self.db, tp, self.func.sf(self.db));
-            {
-                let this = &self;
-                tp.layout(this.db)
-            }
+            tp.layout(self.db)
         } else {
             bytecode::Layout::unit()
         };
@@ -609,14 +595,12 @@ impl<'a> Builder<'a> {
         Place::Local { id, offset: 0 }
     }
 
-    pub fn get_var(&mut self, x: Path<'a>) -> Place {
-        if let [(id, _)] = x.data(self.db)[..]
-            && let Some(place) = self.variable_map.get(&id)
-        {
+    pub fn get_var(&mut self, x: Ident<'a>) -> Place {
+        if let Some(place) = self.variable_map.get(&x) {
             *place
         } else {
             match resolve::get_item(self.db, self.func.sf(self.db), x) {
-                Item::Function { full_name, .. } => {
+                Some(Item::Function { full_name, .. }) => {
                     self.push_inst(Inst::FnAddr(full_name));
                     self.store_ptr()
                 }

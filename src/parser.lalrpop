@@ -1,8 +1,10 @@
 use crate::ast::*;
+use crate::tp::{TypeId, TypeData};
 use crate::bytecode;
 use crate::diagnostic::Diagnostic;
 use salsa::Accumulator;
 use crate::common::{Binop, Unop};
+use crate::input::unescape_json_string;
 
 grammar<'db>(db: &'db dyn salsa::Database, source: crate::input::Source);
 
@@ -36,18 +38,18 @@ pub File: File<'db> = {
     <defs: Def+> => File::new(db, defs),
 }
 
-FnArg: (PatternId<'db>, TypeExprId<'db>) = {
-    <pat: Pattern> ":" <tp: TypeExpr> => (pat, tp),
+FnArg: (PatternId<'db>, TypeId<'db>) = {
+    <pat: Pattern> ":" <tp: Type> => (pat, tp),
 }
 
 Def: Def<'db> = {
     FnDef => Def::Fn(<>),
     StructDef => Def::Struct(<>),
-    "mod" <id: Ident> => Def::ModuleDecl(id),
+    "import" <path: StrLit> => Def::Import(path),
 }
 
-StructField: (Ident<'db>, TypeExprId<'db>) = {
-    <id: Ident> ":" <tp: TypeExpr> => (id, tp),
+StructField: (Ident<'db>, TypeId<'db>) = {
+    <id: Ident> ":" <tp: Type> => (id, tp),
 }
 
 StructDef: StructDef<'db> = {
@@ -60,21 +62,21 @@ StructDef: StructDef<'db> = {
 }
 
 FnDef: FnDef<'db> = {
-    "fn" <l: @L> <name: Ident> <r: @R> "(" <args: CommaSep<FnArg>> ")" <ret: ("->" <TypeExpr>)?> "{"
+    "fn" <l: @L> <name: Ident> <r: @R> "(" <args: CommaSep<FnArg>> ")" <ret: ("->" <Type>)?> "{"
         <body: Expr0>
     "}" => {
             let span = Span::new(db, l, r);
             FnDef::new(db, false, name, span, args, ret, Some(body), source)
         },
 
-    "extern" "fn" <l: @L> <name: Ident> <r: @R> "(" <args: CommaSep<FnArg>> ")" <ret: ("->" <TypeExpr>)?> "{"
+    "extern" "fn" <l: @L> <name: Ident> <r: @R> "(" <args: CommaSep<FnArg>> ")" <ret: ("->" <Type>)?> "{"
         <body: Expr0>
     "}" => {
             let span = Span::new(db, l, r);
             FnDef::new(db, true, name, span, args, ret, Some(body), source)
         },
 
-    "extern" "fn" <l: @L> <name: Ident> <r: @R> "(" <args: CommaSep<FnArg>> ")" <ret: ("->" <TypeExpr>)?> ";"
+    "extern" "fn" <l: @L> <name: Ident> <r: @R> "(" <args: CommaSep<FnArg>> ")" <ret: ("->" <Type>)?> ";"
         => {
             let span = Span::new(db, l, r);
             FnDef::new(db, true, name, span, args, ret, None, source)
@@ -85,19 +87,9 @@ Ident: Ident<'db> = {
     r"[a-zA-Z_]+" => Ident::new(db, <>.to_string())
 }
 
-SpannedIdent: (Ident<'db>, Span<'db>) = {
-    <l: @L> <id: Ident> <r: @R> => {
-        let span = Span::new(db, l, r);
-        (id, span)
-    }
+StrLit: StrLit<'db> = {
+    r#""([^"\\\x00-\x1F]|\\(["\\bnfrt/]|u[a-fA-F0-9]{4}))*""# => StrLit::new(db, unescape_json_string(<>).unwrap())
 }
-
-Path: Path<'db> = {
-    <mut v: (<SpannedIdent> "::")*> <e: SpannedIdent> => {
-        v.push(e);
-        Path::new(db, v)
-    }
-};
 
 Num: i64 = <s: r"[0-9]+"> => s.parse().unwrap();
 
@@ -184,7 +176,7 @@ Expr40Data: ExprData<'db> = {
     "(" ")" => ExprData::Tuple(vec![]),
     "(" <e: Expr0Data> ")" => e,
     "(" <exprs: TwoOrMore<Expr0>> ")" => ExprData::Tuple(exprs),
-    <id: Path> => ExprData::Var(id),
+    <id: Ident> => ExprData::Var(id),
     <e: Expr40> "(" <args: CommaSep<Expr0>> ")" => ExprData::FnCall(e, args),
     <n: Num> => ExprData::Number(n),
     "true" => ExprData::Bool(true),
@@ -192,7 +184,7 @@ Expr40Data: ExprData<'db> = {
 
     <e: Expr40> "." <id: Ident> => ExprData::Field(e, id),
     <e1: Expr40> "[" <e2: Expr0> "]" => ExprData::Index(e1, e2),
-    <id: Path> ".{" <fields: CommaSep<StructInit>> "}" => ExprData::Struct(id, fields),
+    <id: Ident> ".{" <fields: CommaSep<StructInit>> "}" => ExprData::Struct(id, fields),
     "[" <exprs: CommaSep<Expr0>> "]" => ExprData::Array(exprs),
 
 
@@ -227,40 +219,40 @@ PatternData: PatternData<'db> = {
 
 // ==== Type expressions =======================================================
 
-SpannedTypeExpr<Data>: TypeExprId<'db> = {
+SpannedType<Data>: TypeId<'db> = {
     <l: @L> <data: Data> <r: @R> => {
-        let span = Span::new(db, l, r);
-        TypeExprId::new(db, data, span)
+        // let span = Span::new(db, l, r);
+        TypeId::new(db, data)
     }
 };
 
-TypeExpr = SpannedTypeExpr<TypeExprData>;
+Type = SpannedType<TypeData>;
 
-TypeExprData: TypeExprData<'db> = {
-    "int8" => TypeExprData::Primitive(bytecode::Type::Int8),
-    "int16" => TypeExprData::Primitive(bytecode::Type::Int16),
-    "int32" => TypeExprData::Primitive(bytecode::Type::Int32),
-    "int64" => TypeExprData::Primitive(bytecode::Type::Int64),
-    "int128" => TypeExprData::Primitive(bytecode::Type::Int128),
+TypeData: TypeData<'db> = {
+    "int8" => TypeData::Primitive(bytecode::Type::Int8),
+    "int16" => TypeData::Primitive(bytecode::Type::Int16),
+    "int32" => TypeData::Primitive(bytecode::Type::Int32),
+    "int64" => TypeData::Primitive(bytecode::Type::Int64),
+    "int128" => TypeData::Primitive(bytecode::Type::Int128),
 
-    "uint8" => TypeExprData::Primitive(bytecode::Type::UInt8),
-    "uint16" => TypeExprData::Primitive(bytecode::Type::UInt16),
-    "uint32" => TypeExprData::Primitive(bytecode::Type::UInt32),
-    "uint64" => TypeExprData::Primitive(bytecode::Type::UInt64),
-    "uint128" => TypeExprData::Primitive(bytecode::Type::UInt128),
+    "uint8" => TypeData::Primitive(bytecode::Type::UInt8),
+    "uint16" => TypeData::Primitive(bytecode::Type::UInt16),
+    "uint32" => TypeData::Primitive(bytecode::Type::UInt32),
+    "uint64" => TypeData::Primitive(bytecode::Type::UInt64),
+    "uint128" => TypeData::Primitive(bytecode::Type::UInt128),
 
-    "float16" => TypeExprData::Primitive(bytecode::Type::Float16),
-    "float32" => TypeExprData::Primitive(bytecode::Type::Float32),
-    "float64" => TypeExprData::Primitive(bytecode::Type::Float64),
-    "float128" => TypeExprData::Primitive(bytecode::Type::Float128),
+    "float16" => TypeData::Primitive(bytecode::Type::Float16),
+    "float32" => TypeData::Primitive(bytecode::Type::Float32),
+    "float64" => TypeData::Primitive(bytecode::Type::Float64),
+    "float128" => TypeData::Primitive(bytecode::Type::Float128),
 
-    "bool" => TypeExprData::Primitive(bytecode::Type::Bool),
-    "*" <tp: TypeExpr> => TypeExprData::Ptr(tp, false),
-    "*" "mut" <tp: TypeExpr> => TypeExprData::Ptr(tp, true),
-    "(" ")" => TypeExprData::Tuple(vec![]),
-    "(" <tps: TwoOrMore<TypeExpr>> ")" => TypeExprData::Tuple(tps),
-    <id: Path> => TypeExprData::Var(id),
-    "[" <n: Num> "]" <tp: TypeExpr> => TypeExprData::Array(n as usize, tp),
-    "[" "]" <tp: TypeExpr> => TypeExprData::Slice(tp, false),
-    "[" "]" "mut" <tp: TypeExpr> => TypeExprData::Slice(tp, true),
+    "bool" => TypeData::Primitive(bytecode::Type::Bool),
+    "*" <tp: Type> => TypeData::Ptr(tp, false),
+    "*" "mut" <tp: Type> => TypeData::Ptr(tp, true),
+    "(" ")" => TypeData::Tuple(vec![]),
+    "(" <tps: TwoOrMore<Type>> ")" => TypeData::Tuple(tps),
+    <id: Ident> => TypeData::Var(source, id),
+    "[" <n: Num> "]" <tp: Type> => TypeData::Array(n as usize, tp),
+    "[" "]" <tp: Type> => TypeData::Slice(tp, false),
+    "[" "]" "mut" <tp: Type> => TypeData::Slice(tp, true),
 }

@@ -1,13 +1,11 @@
+import "std.must"
 
-extern fn must_alloc(size: int) -> []mut int;
-extern fn must_print(x: int);
-
-fn sort(arr: []mut int) {
+fn sort(arr: []mut int64) {
     let tmp = must_alloc(arr.len) in
     sort_aux(arr, tmp)
 }
 
-fn sort_aux(arr: []mut int, tmp: []mut int) {
+fn sort_aux(arr: []mut int64, tmp: []mut int64) {
     let n = arr.len in
     if n > 1 {
         let m = n / 2 in

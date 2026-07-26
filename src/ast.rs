@@ -1,21 +1,17 @@
 use salsa::Database;
 
 use crate::{
-    bytecode,
     common::{Binop, Unop},
     input::Source,
+    tp::TypeId,
 };
 
-#[salsa::interned(debug)]
-pub struct Span {
+#[salsa::tracked(debug)]
+pub struct Span<'db> {
+    #[tracked(ref)]
     pub start_byte: usize,
+    #[tracked(ref)]
     pub end_byte: usize,
-}
-
-impl<'db> Span<'db> {
-    pub fn nowhere(db: &'db dyn Database) -> Self {
-        Span::new(db, 0, 0)
-    }
 }
 
 #[salsa::tracked(debug)]
@@ -27,14 +23,14 @@ pub struct File<'db> {
 pub enum Def<'db> {
     Fn(FnDef<'db>),
     Struct(StructDef<'db>),
-    ModuleDecl(Ident<'db>),
+    Import(StrLit<'db>),
 }
 
 #[salsa::tracked(debug)]
 pub struct StructDef<'db> {
     pub name: Ident<'db>,
     pub span: Span<'db>,
-    pub fields: Vec<(Ident<'db>, TypeExprId<'db>)>,
+    pub fields: Vec<(Ident<'db>, TypeId<'db>)>,
     pub sf: Source,
 }
 
@@ -43,8 +39,8 @@ pub struct FnDef<'db> {
     pub is_ext: bool,
     pub name: Ident<'db>,
     pub span: Span<'db>,
-    pub args: Vec<(PatternId<'db>, TypeExprId<'db>)>,
-    pub ret: Option<TypeExprId<'db>>,
+    pub args: Vec<(PatternId<'db>, TypeId<'db>)>,
+    pub ret: Option<TypeId<'db>>,
     pub body: Option<ExprId<'db>>,
     pub sf: Source,
 }
@@ -55,29 +51,15 @@ pub struct ExprId {
     pub span: Span<'db>,
 }
 
-#[salsa::interned(debug)]
-pub struct Path {
-    pub data: Vec<(Ident<'db>, Span<'db>)>,
-}
-
-impl<'db> Path<'db> {
-    pub fn join(&self, db: &'db dyn Database) -> String {
-        self.data(db)
-            .iter()
-            .map(|id| id.0.text(db).as_str())
-            .collect::<Vec<&str>>()
-            .join(".")
-    }
-}
-
 #[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::Update)]
 pub enum ExprData<'db> {
     Number(i64),
     Bool(bool),
+    Str(StrLit<'db>),
     Binop(Binop, ExprId<'db>, ExprId<'db>),
     Unop(Unop, ExprId<'db>),
     Let(PatternId<'db>, ExprId<'db>, ExprId<'db>),
-    Var(Path<'db>),
+    Var(Ident<'db>),
     FnCall(ExprId<'db>, Vec<ExprId<'db>>),
     If(ExprId<'db>, ExprId<'db>, Option<ExprId<'db>>),
     While(ExprId<'db>, ExprId<'db>),
@@ -89,7 +71,7 @@ pub enum ExprData<'db> {
     Tuple(Vec<ExprId<'db>>),
     Seq(ExprId<'db>, ExprId<'db>),
 
-    Struct(Path<'db>, Vec<(Ident<'db>, ExprId<'db>)>),
+    Struct(Ident<'db>, Vec<(Ident<'db>, ExprId<'db>)>),
     Field(ExprId<'db>, Ident<'db>),
 
     Array(Vec<ExprId<'db>>),
@@ -114,30 +96,13 @@ pub enum PatternData<'db> {
 }
 
 #[salsa::interned(debug)]
-pub struct TypeExprId {
-    pub data: TypeExprData<'db>,
-    pub span: Span<'db>,
-}
-
-#[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::Update)]
-pub enum TypeExprData<'db> {
-    Primitive(bytecode::Type),
-    Ptr(TypeExprId<'db>, bool),
-    Fn(Vec<TypeExprId<'db>>, TypeExprId<'db>),
-    Tuple(Vec<TypeExprId<'db>>),
-    Var(Path<'db>),
-    Array(usize, TypeExprId<'db>),
-    Slice(TypeExprId<'db>, bool),
-}
-
-#[salsa::interned(debug)]
 pub struct Ident {
     #[returns(ref)]
     pub text: String,
 }
 
-impl<'db> Ident<'db> {
-    pub fn get_id(&self) -> usize {
-        self.0.as_bits() as usize
-    }
+#[salsa::interned(debug)]
+pub struct StrLit {
+    #[returns(ref)]
+    pub text: String,
 }
