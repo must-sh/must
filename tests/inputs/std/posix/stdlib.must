@@ -1,0 +1,1 @@
+extern fn malloc(n: uint64) -> *mut uint8;

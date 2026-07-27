@@ -427,6 +427,7 @@ impl<'a> Env<'a> {
         let db = self.db;
         let (tp, is_mut) = match e.data(db) {
             ExprData::Number(_) => (self.new_numeric_var(), false),
+            ExprData::Char(_) => (TypeData::Primitive(UInt8).wrap(db), false),
             ExprData::Str(s) => {
                 let n = s.text(db).len();
                 (
@@ -687,6 +688,10 @@ impl<'a> Env<'a> {
                     false,
                 );
                 (TypeData::Range.wrap(db), false)
+            }
+            ExprData::Cast(expr, tp) => {
+                self.infer_expr(expr);
+                (tp, false)
             }
         };
         self.type_map.insert(e, tp);

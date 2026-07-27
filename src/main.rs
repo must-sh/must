@@ -61,7 +61,14 @@ fn main() {
             let bytes = obj.emit().unwrap();
             let mut p = PathBuf::from(root_dir);
             p.set_extension("o");
-            std::fs::write(p, bytes).unwrap()
+            std::fs::write(&p, bytes).unwrap();
+            std::process::Command::new("cc")
+                .arg(p)
+                .arg("-o")
+                .arg("a.out")
+                .arg("-lm")
+                .status()
+                .expect("failed to run cc");
         }
         Command::Print { ir } => {
             match ir {

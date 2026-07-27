@@ -1,4 +1,6 @@
 
+import "posix/stdio.must"
+import "posix/stdlib.must"
 
 fn itoa(mut x: int64, buf: []mut uint8) {
     if x == 0 {
@@ -9,14 +11,30 @@ fn itoa(mut x: int64, buf: []mut uint8) {
         i = i - 1;
         while x > 0 {
             let d = x % 10 in
-            buf[i] = '0' + d;
+            buf[i] = '0' + d as uint8;
             x = x / 10;
             i = i - 1
         };
+        i = i + 1;
         let mut j = i in
         while j < buf.len {
             buf[j - i] = buf[j];
             j = j + 1
         }
     }
+}
+
+fn print_int(x: int64) {
+    let mut buf = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] in
+    itoa(x, buf[0..24]);
+    puts(&buf[0])
+}
+
+fn must_alloc(size: uint64) -> []mut int64 {
+    let ptr = malloc(8 * size) as *mut int64 in
+    (ptr, size) as []mut int64
+}
+
+fn print_float(x: float64) {
+    ()
 }

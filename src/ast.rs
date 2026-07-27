@@ -53,6 +53,7 @@ pub struct ExprId {
 pub enum ExprData<'db> {
     Number(i64),
     Bool(bool),
+    Char(u8),
     Str(StrLit<'db>),
     Binop(Binop, ExprId<'db>, ExprId<'db>),
     Unop(Unop, ExprId<'db>),
@@ -76,6 +77,8 @@ pub enum ExprData<'db> {
     Index(ExprId<'db>, ExprId<'db>),
 
     Range(ExprId<'db>, ExprId<'db>),
+
+    Cast(ExprId<'db>, TypeId<'db>),
 
     Error,
 }

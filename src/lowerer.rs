@@ -226,6 +226,10 @@ impl<'a> Builder<'a> {
                 self.push_inst(Inst::PushInt(n, tp));
                 dest.store(self);
             }
+            ExprData::Char(c) => {
+                self.push_inst(Inst::PushInt(c as i64, bytecode::Type::UInt8));
+                dest.store(self);
+            }
             ExprData::Str(s) => {
                 let bytes = s.text(self.db).as_bytes();
                 for i in 0..bytes.len() {
@@ -453,6 +457,9 @@ impl<'a> Builder<'a> {
             ExprData::Range(e1, e2) => {
                 self.lower(e1, dest);
                 self.lower(e2, dest.add_offset(8));
+            }
+            ExprData::Cast(expr, _) => {
+                self.lower(expr, dest);
             }
         }
     }

@@ -70,3 +70,46 @@ pub fn unescape_json_string(s: &str) -> Result<String, String> {
 
     Ok(result)
 }
+
+pub fn parse_char_literal(s: &str) -> Result<u8, String> {
+    // Expect format: `'x'` or `'\xNN'` or `'\n'`
+    if !s.starts_with('\'') || !s.ends_with('\'') {
+        return Err("invalid char literal".into());
+    }
+
+    let inner = &s[1..s.len() - 1];
+    let bytes = inner.as_bytes();
+
+    // Case 1: normal one-character literal: `'a'`
+    if bytes.len() == 1 {
+        return Ok(bytes[0]);
+    }
+
+    // Case 2: escaped literal: starts with '\'
+    if bytes.len() >= 2 && bytes[0] == b'\\' {
+        match bytes[1] {
+            b'a' => return Ok(0x07),
+            b'b' => return Ok(0x08),
+            b'f' => return Ok(0x0C),
+            b'n' => return Ok(0x0A),
+            b'r' => return Ok(0x0D),
+            b't' => return Ok(0x09),
+            b'v' => return Ok(0x0B),
+            b'\\' => return Ok(b'\\'),
+            b'\'' => return Ok(b'\''),
+            b'"' => return Ok(b'"'),
+            b'?' => return Ok(b'?'),
+            b'x' => {
+                // \xNN (1–2 hex digits)
+                let hex = &inner[2..];
+                if hex.is_empty() || hex.len() > 2 {
+                    return Err("invalid hex escape".into());
+                }
+                return u8::from_str_radix(hex, 16).map_err(|_| "invalid hex digits".to_string());
+            }
+            _ => return Err("unknown escape".into()),
+        }
+    }
+
+    Err("invalid char literal format".into())
+}
