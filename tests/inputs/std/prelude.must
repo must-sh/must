@@ -1,0 +1,22 @@
+
+
+fn itoa(mut x: int64, buf: []mut uint8) {
+    if x == 0 {
+        putchar('0')
+    } else {
+        let mut i = buf.len - 1 in
+        buf[i] = 0;
+        i = i - 1;
+        while x > 0 {
+            let d = x % 10 in
+            buf[i] = '0' + d;
+            x = x / 10;
+            i = i - 1
+        };
+        let mut j = i in
+        while j < buf.len {
+            buf[j - i] = buf[j];
+            j = j + 1
+        }
+    }
+}
