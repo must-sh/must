@@ -4,7 +4,7 @@ use crate::bytecode;
 use crate::diagnostic::Diagnostic;
 use salsa::Accumulator;
 use crate::common::{Binop, Unop};
-use crate::input::unescape_json_string;
+use crate::input::{unescape_json_string, parse_char_literal};
 
 grammar<'db>(db: &'db dyn salsa::Database, source: crate::input::Source);
 
@@ -96,6 +96,12 @@ StrLit: StrLit<'db> = {
     r#""([^"\\\x00-\x1F]|\\(["\\bnfrt/]|u[a-fA-F0-9]{4}))*""# => StrLit::new(db, unescape_json_string(<>).unwrap())
 }
 
+CharLit: u8 = {
+    r"'([^'\\]|\\.)'" => {
+        parse_char_literal(<>).unwrap()
+    }
+};
+
 Num: i64 = <s: r"[0-9]+"> => s.parse().unwrap();
 
 // ==== Expressions ============================================================
@@ -185,6 +191,7 @@ Expr40Data: ExprData<'db> = {
     <e: Expr40> "(" <args: CommaSep<Expr0>> ")" => ExprData::FnCall(e, args),
     <n: Num> => ExprData::Number(n),
     <s: StrLit> => ExprData::Str(s),
+    <c: CharLit> => ExprData::Char(c),
     "true" => ExprData::Bool(true),
     "false" => ExprData::Bool(false),
 
@@ -193,6 +200,7 @@ Expr40Data: ExprData<'db> = {
     <id: Ident> ".{" <fields: CommaSep<StructInit>> "}" => ExprData::Struct(id, fields),
     "[" <exprs: CommaSep<Expr0>> "]" => ExprData::Array(exprs),
 
+    <e: Expr40> "as" <tp: Type> => ExprData::Cast(e, tp),
 
     ! => {
         Diagnostic::parser_error(<>.error, source).accumulate(db);

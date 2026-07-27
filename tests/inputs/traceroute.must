@@ -1,5 +1,7 @@
-import "std/sys/socket.must"
+import "std/prelude.must"
 
 fn main() {
-    ()
+    let mut buf = [0, 0, 0, 0, 0, 0] in
+    itoa(42, buf[0..5]);
+    puts(&buf[0])
 }
