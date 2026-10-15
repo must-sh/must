@@ -1,0 +1,26 @@
+---
+source: tests/run.rs
+expression: combined_output
+input_file: tests/inputs/dangling.must
+---
+EXIT CODE: 255
+
+--- STDOUT ---
+
+--- STDERR ---
+Error: type mismatch. expected: TypeId { data: Ptr(TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nfn bad() -> *int {\n    let x = 42 in\n    &x\n}\n\nfn foo() {\n    let x = true in\n    ()\n}\n\nfn main() -> bool {\n    let ptr = bad() in\n    foo();\n    *ptr == 13\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/dangling.must" }, Ident { text: "int" }) }, false) }, got: TypeId { data: Ptr(TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }, false) }
+   ╭─[ /home/domin/Desktop/must/tests/inputs/dangling.must:3:5 ]
+   │
+ 3 │ ╭─▶     let x = 42 in
+ 4 │ ├─▶     &x
+   │ │            
+   │ ╰──────────── type mismatch. expected: TypeId { data: Ptr(TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nfn bad() -> *int {\n    let x = 42 in\n    &x\n}\n\nfn foo() {\n    let x = true in\n    ()\n}\n\nfn main() -> bool {\n    let ptr = bad() in\n    foo();\n    *ptr == 13\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/dangling.must" }, Ident { text: "int" }) }, false) }, got: TypeId { data: Ptr(TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }, false) }
+───╯
+Error: type mismatch. expected: TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }, got: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nfn bad() -> *int {\n    let x = 42 in\n    &x\n}\n\nfn foo() {\n    let x = true in\n    ()\n}\n\nfn main() -> bool {\n    let ptr = bad() in\n    foo();\n    *ptr == 13\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/dangling.must" }, Ident { text: "int" }) }
+    ╭─[ /home/domin/Desktop/must/tests/inputs/dangling.must:15:5 ]
+    │
+ 15 │     *ptr == 13
+    │     ──┬─  
+    │       ╰─── type mismatch. expected: TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }, got: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nfn bad() -> *int {\n    let x = 42 in\n    &x\n}\n\nfn foo() {\n    let x = true in\n    ()\n}\n\nfn main() -> bool {\n    let ptr = bad() in\n    foo();\n    *ptr == 13\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/dangling.must" }, Ident { text: "int" }) }
+────╯
+errors occured, compilation aborted

@@ -1,0 +1,25 @@
+---
+source: tests/run.rs
+expression: combined_output
+input_file: tests/inputs/slice.must
+---
+EXIT CODE: 255
+
+--- STDOUT ---
+
+--- STDERR ---
+Error: type mismatch. expected: TypeId { data: Slice(TypeId { data: Var(Source { [salsa id]: Id(0), text: "\n\nfn foo(a: []int, b: []int) { () }\n\nfn main() {\n    let arr = [1, 2, 3] in\n    let slice = arr[0..3] in\n    foo(slice, slice)\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/slice.must" }, Ident { text: "int" }) }, false) }, got: TypeId { data: Slice(TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }, false) }
+   ╭─[ /home/domin/Desktop/must/tests/inputs/slice.must:8:9 ]
+   │
+ 8 │     foo(slice, slice)
+   │         ──┬──  
+   │           ╰──── type mismatch. expected: TypeId { data: Slice(TypeId { data: Var(Source { [salsa id]: Id(0), text: "\n\nfn foo(a: []int, b: []int) { () }\n\nfn main() {\n    let arr = [1, 2, 3] in\n    let slice = arr[0..3] in\n    foo(slice, slice)\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/slice.must" }, Ident { text: "int" }) }, false) }, got: TypeId { data: Slice(TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }, false) }
+───╯
+Error: type mismatch. expected: TypeId { data: Slice(TypeId { data: Var(Source { [salsa id]: Id(0), text: "\n\nfn foo(a: []int, b: []int) { () }\n\nfn main() {\n    let arr = [1, 2, 3] in\n    let slice = arr[0..3] in\n    foo(slice, slice)\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/slice.must" }, Ident { text: "int" }) }, false) }, got: TypeId { data: Slice(TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }, false) }
+   ╭─[ /home/domin/Desktop/must/tests/inputs/slice.must:8:16 ]
+   │
+ 8 │     foo(slice, slice)
+   │                ──┬──  
+   │                  ╰──── type mismatch. expected: TypeId { data: Slice(TypeId { data: Var(Source { [salsa id]: Id(0), text: "\n\nfn foo(a: []int, b: []int) { () }\n\nfn main() {\n    let arr = [1, 2, 3] in\n    let slice = arr[0..3] in\n    foo(slice, slice)\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/slice.must" }, Ident { text: "int" }) }, false) }, got: TypeId { data: Slice(TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }, false) }
+───╯
+errors occured, compilation aborted

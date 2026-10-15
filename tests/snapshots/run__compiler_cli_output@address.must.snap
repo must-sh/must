@@ -1,0 +1,18 @@
+---
+source: tests/run.rs
+expression: combined_output
+input_file: tests/inputs/address.must
+---
+EXIT CODE: 255
+
+--- STDOUT ---
+
+--- STDERR ---
+Error: type mismatch. expected: TypeId { data: Ptr(TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: *int);\n\nfn main() {\n    must_print(&4)\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/address.must" }, Ident { text: "int" }) }, false) }, got: TypeId { data: Ptr(TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }, false) }
+   ╭─[ /home/domin/Desktop/must/tests/inputs/address.must:5:16 ]
+   │
+ 5 │     must_print(&4)
+   │                ─┬  
+   │                 ╰── type mismatch. expected: TypeId { data: Ptr(TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: *int);\n\nfn main() {\n    must_print(&4)\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/address.must" }, Ident { text: "int" }) }, false) }, got: TypeId { data: Ptr(TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }, false) }
+───╯
+errors occured, compilation aborted

@@ -1,0 +1,81 @@
+---
+source: tests/run.rs
+expression: combined_output
+input_file: tests/inputs/array_big.must
+---
+EXIT CODE: 255
+
+--- STDOUT ---
+
+--- STDERR ---
+Error: type mismatch. expected: TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }, got: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nstruct S {\n    x: bool,\n    y: int,\n    z: int,\n}\n\nfn modify(s: *mut S) {\n    (*s).y = (*s).z + 42\n}\n\nfn main() -> int {\n    let mut arr = [\n        S .{ x = true, y = 0, z = 1 },\n        S .{ x = false, y = 2, z = 3 },\n        S .{ x = true, y = 4, z = 5 },\n    ] in\n    arr[1] = S .{ x = true, y = 6, z = 13 };\n    modify(&arr[1]);\n    arr[1].y\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array_big.must" }, Ident { text: "int" }) }
+   ╭─[ /home/domin/Desktop/must/tests/inputs/array_big.must:9:14 ]
+   │
+ 9 │     (*s).y = (*s).z + 42
+   │              ───┬──  
+   │                 ╰──── type mismatch. expected: TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }, got: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nstruct S {\n    x: bool,\n    y: int,\n    z: int,\n}\n\nfn modify(s: *mut S) {\n    (*s).y = (*s).z + 42\n}\n\nfn main() -> int {\n    let mut arr = [\n        S .{ x = true, y = 0, z = 1 },\n        S .{ x = false, y = 2, z = 3 },\n        S .{ x = true, y = 4, z = 5 },\n    ] in\n    arr[1] = S .{ x = true, y = 6, z = 13 };\n    modify(&arr[1]);\n    arr[1].y\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array_big.must" }, Ident { text: "int" }) }
+───╯
+Error: type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nstruct S {\n    x: bool,\n    y: int,\n    z: int,\n}\n\nfn modify(s: *mut S) {\n    (*s).y = (*s).z + 42\n}\n\nfn main() -> int {\n    let mut arr = [\n        S .{ x = true, y = 0, z = 1 },\n        S .{ x = false, y = 2, z = 3 },\n        S .{ x = true, y = 4, z = 5 },\n    ] in\n    arr[1] = S .{ x = true, y = 6, z = 13 };\n    modify(&arr[1]);\n    arr[1].y\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array_big.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }
+   ╭─[ /home/domin/Desktop/must/tests/inputs/array_big.must:9:14 ]
+   │
+ 9 │     (*s).y = (*s).z + 42
+   │              ─────┬─────  
+   │                   ╰─────── type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nstruct S {\n    x: bool,\n    y: int,\n    z: int,\n}\n\nfn modify(s: *mut S) {\n    (*s).y = (*s).z + 42\n}\n\nfn main() -> int {\n    let mut arr = [\n        S .{ x = true, y = 0, z = 1 },\n        S .{ x = false, y = 2, z = 3 },\n        S .{ x = true, y = 4, z = 5 },\n    ] in\n    arr[1] = S .{ x = true, y = 6, z = 13 };\n    modify(&arr[1]);\n    arr[1].y\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array_big.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }
+───╯
+Error: type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nstruct S {\n    x: bool,\n    y: int,\n    z: int,\n}\n\nfn modify(s: *mut S) {\n    (*s).y = (*s).z + 42\n}\n\nfn main() -> int {\n    let mut arr = [\n        S .{ x = true, y = 0, z = 1 },\n        S .{ x = false, y = 2, z = 3 },\n        S .{ x = true, y = 4, z = 5 },\n    ] in\n    arr[1] = S .{ x = true, y = 6, z = 13 };\n    modify(&arr[1]);\n    arr[1].y\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array_big.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }
+    ╭─[ /home/domin/Desktop/must/tests/inputs/array_big.must:14:28 ]
+    │
+ 14 │         S .{ x = true, y = 0, z = 1 },
+    │                            ┬  
+    │                            ╰── type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nstruct S {\n    x: bool,\n    y: int,\n    z: int,\n}\n\nfn modify(s: *mut S) {\n    (*s).y = (*s).z + 42\n}\n\nfn main() -> int {\n    let mut arr = [\n        S .{ x = true, y = 0, z = 1 },\n        S .{ x = false, y = 2, z = 3 },\n        S .{ x = true, y = 4, z = 5 },\n    ] in\n    arr[1] = S .{ x = true, y = 6, z = 13 };\n    modify(&arr[1]);\n    arr[1].y\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array_big.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }
+────╯
+Error: type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nstruct S {\n    x: bool,\n    y: int,\n    z: int,\n}\n\nfn modify(s: *mut S) {\n    (*s).y = (*s).z + 42\n}\n\nfn main() -> int {\n    let mut arr = [\n        S .{ x = true, y = 0, z = 1 },\n        S .{ x = false, y = 2, z = 3 },\n        S .{ x = true, y = 4, z = 5 },\n    ] in\n    arr[1] = S .{ x = true, y = 6, z = 13 };\n    modify(&arr[1]);\n    arr[1].y\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array_big.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(1, PhantomData<&()>)) }
+    ╭─[ /home/domin/Desktop/must/tests/inputs/array_big.must:14:35 ]
+    │
+ 14 │         S .{ x = true, y = 0, z = 1 },
+    │                                   ┬  
+    │                                   ╰── type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nstruct S {\n    x: bool,\n    y: int,\n    z: int,\n}\n\nfn modify(s: *mut S) {\n    (*s).y = (*s).z + 42\n}\n\nfn main() -> int {\n    let mut arr = [\n        S .{ x = true, y = 0, z = 1 },\n        S .{ x = false, y = 2, z = 3 },\n        S .{ x = true, y = 4, z = 5 },\n    ] in\n    arr[1] = S .{ x = true, y = 6, z = 13 };\n    modify(&arr[1]);\n    arr[1].y\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array_big.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(1, PhantomData<&()>)) }
+────╯
+Error: type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nstruct S {\n    x: bool,\n    y: int,\n    z: int,\n}\n\nfn modify(s: *mut S) {\n    (*s).y = (*s).z + 42\n}\n\nfn main() -> int {\n    let mut arr = [\n        S .{ x = true, y = 0, z = 1 },\n        S .{ x = false, y = 2, z = 3 },\n        S .{ x = true, y = 4, z = 5 },\n    ] in\n    arr[1] = S .{ x = true, y = 6, z = 13 };\n    modify(&arr[1]);\n    arr[1].y\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array_big.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(2, PhantomData<&()>)) }
+    ╭─[ /home/domin/Desktop/must/tests/inputs/array_big.must:16:35 ]
+    │
+ 16 │         S .{ x = true, y = 4, z = 5 },
+    │                                   ┬  
+    │                                   ╰── type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nstruct S {\n    x: bool,\n    y: int,\n    z: int,\n}\n\nfn modify(s: *mut S) {\n    (*s).y = (*s).z + 42\n}\n\nfn main() -> int {\n    let mut arr = [\n        S .{ x = true, y = 0, z = 1 },\n        S .{ x = false, y = 2, z = 3 },\n        S .{ x = true, y = 4, z = 5 },\n    ] in\n    arr[1] = S .{ x = true, y = 6, z = 13 };\n    modify(&arr[1]);\n    arr[1].y\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array_big.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(2, PhantomData<&()>)) }
+────╯
+Error: type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nstruct S {\n    x: bool,\n    y: int,\n    z: int,\n}\n\nfn modify(s: *mut S) {\n    (*s).y = (*s).z + 42\n}\n\nfn main() -> int {\n    let mut arr = [\n        S .{ x = true, y = 0, z = 1 },\n        S .{ x = false, y = 2, z = 3 },\n        S .{ x = true, y = 4, z = 5 },\n    ] in\n    arr[1] = S .{ x = true, y = 6, z = 13 };\n    modify(&arr[1]);\n    arr[1].y\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array_big.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(3, PhantomData<&()>)) }
+    ╭─[ /home/domin/Desktop/must/tests/inputs/array_big.must:16:28 ]
+    │
+ 16 │         S .{ x = true, y = 4, z = 5 },
+    │                            ┬  
+    │                            ╰── type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nstruct S {\n    x: bool,\n    y: int,\n    z: int,\n}\n\nfn modify(s: *mut S) {\n    (*s).y = (*s).z + 42\n}\n\nfn main() -> int {\n    let mut arr = [\n        S .{ x = true, y = 0, z = 1 },\n        S .{ x = false, y = 2, z = 3 },\n        S .{ x = true, y = 4, z = 5 },\n    ] in\n    arr[1] = S .{ x = true, y = 6, z = 13 };\n    modify(&arr[1]);\n    arr[1].y\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array_big.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(3, PhantomData<&()>)) }
+────╯
+Error: type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nstruct S {\n    x: bool,\n    y: int,\n    z: int,\n}\n\nfn modify(s: *mut S) {\n    (*s).y = (*s).z + 42\n}\n\nfn main() -> int {\n    let mut arr = [\n        S .{ x = true, y = 0, z = 1 },\n        S .{ x = false, y = 2, z = 3 },\n        S .{ x = true, y = 4, z = 5 },\n    ] in\n    arr[1] = S .{ x = true, y = 6, z = 13 };\n    modify(&arr[1]);\n    arr[1].y\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array_big.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(4, PhantomData<&()>)) }
+    ╭─[ /home/domin/Desktop/must/tests/inputs/array_big.must:15:36 ]
+    │
+ 15 │         S .{ x = false, y = 2, z = 3 },
+    │                                    ┬  
+    │                                    ╰── type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nstruct S {\n    x: bool,\n    y: int,\n    z: int,\n}\n\nfn modify(s: *mut S) {\n    (*s).y = (*s).z + 42\n}\n\nfn main() -> int {\n    let mut arr = [\n        S .{ x = true, y = 0, z = 1 },\n        S .{ x = false, y = 2, z = 3 },\n        S .{ x = true, y = 4, z = 5 },\n    ] in\n    arr[1] = S .{ x = true, y = 6, z = 13 };\n    modify(&arr[1]);\n    arr[1].y\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array_big.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(4, PhantomData<&()>)) }
+────╯
+Error: type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nstruct S {\n    x: bool,\n    y: int,\n    z: int,\n}\n\nfn modify(s: *mut S) {\n    (*s).y = (*s).z + 42\n}\n\nfn main() -> int {\n    let mut arr = [\n        S .{ x = true, y = 0, z = 1 },\n        S .{ x = false, y = 2, z = 3 },\n        S .{ x = true, y = 4, z = 5 },\n    ] in\n    arr[1] = S .{ x = true, y = 6, z = 13 };\n    modify(&arr[1]);\n    arr[1].y\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array_big.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(5, PhantomData<&()>)) }
+    ╭─[ /home/domin/Desktop/must/tests/inputs/array_big.must:15:29 ]
+    │
+ 15 │         S .{ x = false, y = 2, z = 3 },
+    │                             ┬  
+    │                             ╰── type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nstruct S {\n    x: bool,\n    y: int,\n    z: int,\n}\n\nfn modify(s: *mut S) {\n    (*s).y = (*s).z + 42\n}\n\nfn main() -> int {\n    let mut arr = [\n        S .{ x = true, y = 0, z = 1 },\n        S .{ x = false, y = 2, z = 3 },\n        S .{ x = true, y = 4, z = 5 },\n    ] in\n    arr[1] = S .{ x = true, y = 6, z = 13 };\n    modify(&arr[1]);\n    arr[1].y\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array_big.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(5, PhantomData<&()>)) }
+────╯
+Error: type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nstruct S {\n    x: bool,\n    y: int,\n    z: int,\n}\n\nfn modify(s: *mut S) {\n    (*s).y = (*s).z + 42\n}\n\nfn main() -> int {\n    let mut arr = [\n        S .{ x = true, y = 0, z = 1 },\n        S .{ x = false, y = 2, z = 3 },\n        S .{ x = true, y = 4, z = 5 },\n    ] in\n    arr[1] = S .{ x = true, y = 6, z = 13 };\n    modify(&arr[1]);\n    arr[1].y\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array_big.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(7, PhantomData<&()>)) }
+    ╭─[ /home/domin/Desktop/must/tests/inputs/array_big.must:18:40 ]
+    │
+ 18 │     arr[1] = S .{ x = true, y = 6, z = 13 };
+    │                                        ─┬  
+    │                                         ╰── type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nstruct S {\n    x: bool,\n    y: int,\n    z: int,\n}\n\nfn modify(s: *mut S) {\n    (*s).y = (*s).z + 42\n}\n\nfn main() -> int {\n    let mut arr = [\n        S .{ x = true, y = 0, z = 1 },\n        S .{ x = false, y = 2, z = 3 },\n        S .{ x = true, y = 4, z = 5 },\n    ] in\n    arr[1] = S .{ x = true, y = 6, z = 13 };\n    modify(&arr[1]);\n    arr[1].y\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array_big.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(7, PhantomData<&()>)) }
+────╯
+Error: type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nstruct S {\n    x: bool,\n    y: int,\n    z: int,\n}\n\nfn modify(s: *mut S) {\n    (*s).y = (*s).z + 42\n}\n\nfn main() -> int {\n    let mut arr = [\n        S .{ x = true, y = 0, z = 1 },\n        S .{ x = false, y = 2, z = 3 },\n        S .{ x = true, y = 4, z = 5 },\n    ] in\n    arr[1] = S .{ x = true, y = 6, z = 13 };\n    modify(&arr[1]);\n    arr[1].y\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array_big.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(8, PhantomData<&()>)) }
+    ╭─[ /home/domin/Desktop/must/tests/inputs/array_big.must:18:33 ]
+    │
+ 18 │     arr[1] = S .{ x = true, y = 6, z = 13 };
+    │                                 ┬  
+    │                                 ╰── type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nstruct S {\n    x: bool,\n    y: int,\n    z: int,\n}\n\nfn modify(s: *mut S) {\n    (*s).y = (*s).z + 42\n}\n\nfn main() -> int {\n    let mut arr = [\n        S .{ x = true, y = 0, z = 1 },\n        S .{ x = false, y = 2, z = 3 },\n        S .{ x = true, y = 4, z = 5 },\n    ] in\n    arr[1] = S .{ x = true, y = 6, z = 13 };\n    modify(&arr[1]);\n    arr[1].y\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array_big.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(8, PhantomData<&()>)) }
+────╯
+errors occured, compilation aborted

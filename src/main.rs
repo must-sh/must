@@ -21,20 +21,10 @@ lalrpop_util::lalrpop_mod!(parser);
 
 #[derive(clap::Parser)]
 struct Cli {
-    #[command(subcommand)]
-    cmd: Command,
-    #[arg(long)]
+    /// Source file to compile
     path: String,
-}
-
-#[derive(Debug, Clone, clap::Subcommand)]
-enum Command {
-    /// Run a file.
-    Run,
-    /// Compile a file.
-    Compile,
-    /// Print intermediate representation.
-    Print { ir: Ir },
+    #[arg(long, default_value_t = false)]
+    no_color: bool,
 }
 
 #[derive(Copy, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, clap::ValueEnum)]
@@ -47,43 +37,23 @@ fn main() {
     let cli = Cli::parse();
     let db = &DatabaseImpl::new();
     let root_dir = cli.path;
-    let prog = check_and_compile(db, &root_dir);
-    match cli.cmd {
-        Command::Run => {
-            let mut vm = VM::new(&prog.funcs);
-            match vm.eval_func("main") {
-                Some(_) => println!("Result: {:?}", vm.finish()),
-                None => println!("runtime error occured!"),
-            }
-        }
-        Command::Compile => {
-            let obj = codegen::compile(prog, false);
-            let bytes = obj.emit().unwrap();
-            let mut p = PathBuf::from(root_dir);
-            p.set_extension("o");
-            std::fs::write(&p, bytes).unwrap();
-            std::process::Command::new("cc")
-                .arg(p)
-                .arg("-o")
-                .arg("a.out")
-                .arg("-lm")
-                .status()
-                .expect("failed to run cc");
-        }
-        Command::Print { ir } => {
-            match ir {
-                Ir::Cranelift => {
-                    codegen::compile(prog, true);
-                }
-                Ir::Bytecode => {
-                    println!("{}", prog);
-                }
-            };
-        }
-    }
+    let prog = check_and_compile(db, &root_dir, !cli.no_color);
+
+    let obj = codegen::compile(prog, false);
+    let bytes = obj.emit().unwrap();
+    let mut p = PathBuf::from(root_dir);
+    p.set_extension("o");
+    std::fs::write(&p, bytes).unwrap();
+    std::process::Command::new("cc")
+        .arg(p)
+        .arg("-o")
+        .arg("a.out")
+        .arg("-lm")
+        .status()
+        .expect("failed to run cc");
 }
 
-fn check_and_compile(db: &DatabaseImpl, filename: &String) -> bytecode::Prog {
+fn check_and_compile(db: &DatabaseImpl, filename: &String, color: bool) -> bytecode::Prog {
     let text = read_to_string(&filename).expect("couldnt open file");
     let sf = Source::new(db, text.clone(), filename.into());
     driver::type_check(db, sf);
@@ -91,7 +61,7 @@ fn check_and_compile(db: &DatabaseImpl, filename: &String) -> bytecode::Prog {
     for diag in &diags {
         let sf = diag.source;
         let file_name = &sf.file_name(db).to_str().unwrap().to_string();
-        diag.as_ariadne_report(file_name)
+        diag.as_ariadne_report(file_name, color)
             .eprint((file_name, ariadne::Source::from(&sf.text(db))))
             .unwrap();
     }

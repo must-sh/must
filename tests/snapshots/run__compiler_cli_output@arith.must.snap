@@ -1,0 +1,67 @@
+---
+source: tests/run.rs
+expression: combined_output
+input_file: tests/inputs/arith.must
+---
+EXIT CODE: 255
+
+--- STDOUT ---
+
+--- STDERR ---
+Error: type mismatch. expected: TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }, got: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\nextern fn must_read() -> int;\n\nfn square(x: int) -> int {\n    x * x\n}\n\nfn is_even(x: int) -> bool {\n    (x / 2) * 2 == x\n}\n\nfn main() {\n    let mut i = must_read() in\n    while 0 < i {\n        must_print(i);\n        i = i - 1\n    }\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/arith.must" }, Ident { text: "int" }) }
+   ╭─[ /home/domin/Desktop/must/tests/inputs/arith.must:6:5 ]
+   │
+ 6 │     x * x
+   │     ┬  
+   │     ╰── type mismatch. expected: TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }, got: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\nextern fn must_read() -> int;\n\nfn square(x: int) -> int {\n    x * x\n}\n\nfn is_even(x: int) -> bool {\n    (x / 2) * 2 == x\n}\n\nfn main() {\n    let mut i = must_read() in\n    while 0 < i {\n        must_print(i);\n        i = i - 1\n    }\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/arith.must" }, Ident { text: "int" }) }
+───╯
+Error: type mismatch. expected: TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }, got: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\nextern fn must_read() -> int;\n\nfn square(x: int) -> int {\n    x * x\n}\n\nfn is_even(x: int) -> bool {\n    (x / 2) * 2 == x\n}\n\nfn main() {\n    let mut i = must_read() in\n    while 0 < i {\n        must_print(i);\n        i = i - 1\n    }\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/arith.must" }, Ident { text: "int" }) }
+   ╭─[ /home/domin/Desktop/must/tests/inputs/arith.must:6:9 ]
+   │
+ 6 │     x * x
+   │         ┬  
+   │         ╰── type mismatch. expected: TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }, got: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\nextern fn must_read() -> int;\n\nfn square(x: int) -> int {\n    x * x\n}\n\nfn is_even(x: int) -> bool {\n    (x / 2) * 2 == x\n}\n\nfn main() {\n    let mut i = must_read() in\n    while 0 < i {\n        must_print(i);\n        i = i - 1\n    }\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/arith.must" }, Ident { text: "int" }) }
+───╯
+Error: type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\nextern fn must_read() -> int;\n\nfn square(x: int) -> int {\n    x * x\n}\n\nfn is_even(x: int) -> bool {\n    (x / 2) * 2 == x\n}\n\nfn main() {\n    let mut i = must_read() in\n    while 0 < i {\n        must_print(i);\n        i = i - 1\n    }\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/arith.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }
+   ╭─[ /home/domin/Desktop/must/tests/inputs/arith.must:6:5 ]
+   │
+ 6 │     x * x
+   │     ──┬──  
+   │       ╰──── type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\nextern fn must_read() -> int;\n\nfn square(x: int) -> int {\n    x * x\n}\n\nfn is_even(x: int) -> bool {\n    (x / 2) * 2 == x\n}\n\nfn main() {\n    let mut i = must_read() in\n    while 0 < i {\n        must_print(i);\n        i = i - 1\n    }\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/arith.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }
+───╯
+Error: type mismatch. expected: TypeId { data: Infer(InferVar(2, PhantomData<&()>)) }, got: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\nextern fn must_read() -> int;\n\nfn square(x: int) -> int {\n    x * x\n}\n\nfn is_even(x: int) -> bool {\n    (x / 2) * 2 == x\n}\n\nfn main() {\n    let mut i = must_read() in\n    while 0 < i {\n        must_print(i);\n        i = i - 1\n    }\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/arith.must" }, Ident { text: "int" }) }
+    ╭─[ /home/domin/Desktop/must/tests/inputs/arith.must:10:6 ]
+    │
+ 10 │     (x / 2) * 2 == x
+    │      ┬  
+    │      ╰── type mismatch. expected: TypeId { data: Infer(InferVar(2, PhantomData<&()>)) }, got: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\nextern fn must_read() -> int;\n\nfn square(x: int) -> int {\n    x * x\n}\n\nfn is_even(x: int) -> bool {\n    (x / 2) * 2 == x\n}\n\nfn main() {\n    let mut i = must_read() in\n    while 0 < i {\n        must_print(i);\n        i = i - 1\n    }\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/arith.must" }, Ident { text: "int" }) }
+────╯
+Error: type mismatch. expected: TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }, got: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\nextern fn must_read() -> int;\n\nfn square(x: int) -> int {\n    x * x\n}\n\nfn is_even(x: int) -> bool {\n    (x / 2) * 2 == x\n}\n\nfn main() {\n    let mut i = must_read() in\n    while 0 < i {\n        must_print(i);\n        i = i - 1\n    }\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/arith.must" }, Ident { text: "int" }) }
+    ╭─[ /home/domin/Desktop/must/tests/inputs/arith.must:10:20 ]
+    │
+ 10 │     (x / 2) * 2 == x
+    │                    ┬  
+    │                    ╰── type mismatch. expected: TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }, got: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\nextern fn must_read() -> int;\n\nfn square(x: int) -> int {\n    x * x\n}\n\nfn is_even(x: int) -> bool {\n    (x / 2) * 2 == x\n}\n\nfn main() {\n    let mut i = must_read() in\n    while 0 < i {\n        must_print(i);\n        i = i - 1\n    }\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/arith.must" }, Ident { text: "int" }) }
+────╯
+Error: type mismatch. expected: TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }, got: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\nextern fn must_read() -> int;\n\nfn square(x: int) -> int {\n    x * x\n}\n\nfn is_even(x: int) -> bool {\n    (x / 2) * 2 == x\n}\n\nfn main() {\n    let mut i = must_read() in\n    while 0 < i {\n        must_print(i);\n        i = i - 1\n    }\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/arith.must" }, Ident { text: "int" }) }
+    ╭─[ /home/domin/Desktop/must/tests/inputs/arith.must:15:15 ]
+    │
+ 15 │     while 0 < i {
+    │               ┬  
+    │               ╰── type mismatch. expected: TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }, got: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\nextern fn must_read() -> int;\n\nfn square(x: int) -> int {\n    x * x\n}\n\nfn is_even(x: int) -> bool {\n    (x / 2) * 2 == x\n}\n\nfn main() {\n    let mut i = must_read() in\n    while 0 < i {\n        must_print(i);\n        i = i - 1\n    }\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/arith.must" }, Ident { text: "int" }) }
+────╯
+Error: type mismatch. expected: TypeId { data: Infer(InferVar(2, PhantomData<&()>)) }, got: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\nextern fn must_read() -> int;\n\nfn square(x: int) -> int {\n    x * x\n}\n\nfn is_even(x: int) -> bool {\n    (x / 2) * 2 == x\n}\n\nfn main() {\n    let mut i = must_read() in\n    while 0 < i {\n        must_print(i);\n        i = i - 1\n    }\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/arith.must" }, Ident { text: "int" }) }
+    ╭─[ /home/domin/Desktop/must/tests/inputs/arith.must:17:13 ]
+    │
+ 17 │         i = i - 1
+    │             ┬  
+    │             ╰── type mismatch. expected: TypeId { data: Infer(InferVar(2, PhantomData<&()>)) }, got: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\nextern fn must_read() -> int;\n\nfn square(x: int) -> int {\n    x * x\n}\n\nfn is_even(x: int) -> bool {\n    (x / 2) * 2 == x\n}\n\nfn main() {\n    let mut i = must_read() in\n    while 0 < i {\n        must_print(i);\n        i = i - 1\n    }\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/arith.must" }, Ident { text: "int" }) }
+────╯
+Error: type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\nextern fn must_read() -> int;\n\nfn square(x: int) -> int {\n    x * x\n}\n\nfn is_even(x: int) -> bool {\n    (x / 2) * 2 == x\n}\n\nfn main() {\n    let mut i = must_read() in\n    while 0 < i {\n        must_print(i);\n        i = i - 1\n    }\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/arith.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(2, PhantomData<&()>)) }
+    ╭─[ /home/domin/Desktop/must/tests/inputs/arith.must:17:13 ]
+    │
+ 17 │         i = i - 1
+    │             ──┬──  
+    │               ╰──── type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\nextern fn must_read() -> int;\n\nfn square(x: int) -> int {\n    x * x\n}\n\nfn is_even(x: int) -> bool {\n    (x / 2) * 2 == x\n}\n\nfn main() {\n    let mut i = must_read() in\n    while 0 < i {\n        must_print(i);\n        i = i - 1\n    }\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/arith.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(2, PhantomData<&()>)) }
+────╯
+errors occured, compilation aborted

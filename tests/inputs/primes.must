@@ -1,11 +1,11 @@
 
-extern fn must_print(x: int);
+import "std/prelude.must"
 
-fn square(x: int) -> int {
+fn square(x: int64) -> int64 {
     x * x
 }
 
-fn is_prime(x: int) -> bool {
+fn is_prime(x: int64) -> bool {
     let mut res = true in
     let mut n = 2 in
     while square(n) <= x {
@@ -17,10 +17,11 @@ fn is_prime(x: int) -> bool {
     res
 }
 
-fn main() {
+fn main() -> int64 {
     let mut i = 2 in
     while i < 30 {
-        if is_prime(i) { must_print(i) };
+        if is_prime(i) { print_int(i) };
         i = i + 1
-    }
+    };
+    0
 }

@@ -1,0 +1,18 @@
+---
+source: tests/run.rs
+expression: combined_output
+input_file: tests/inputs/tuples.must
+---
+EXIT CODE: 255
+
+--- STDOUT ---
+
+--- STDERR ---
+Error: type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\n\nfn main() {\n    let triple = (1, 2, 3) in\n    let (x, _, y) = triple in\n    let res = y + x in\n    foo();\n    must_print(res)\n}\n\nfn foo() {\n    ()\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/tuples.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(3, PhantomData<&()>)) }
+   ╭─[ /home/domin/Desktop/must/tests/inputs/tuples.must:9:16 ]
+   │
+ 9 │     must_print(res)
+   │                ─┬─  
+   │                 ╰─── type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\n\nfn main() {\n    let triple = (1, 2, 3) in\n    let (x, _, y) = triple in\n    let res = y + x in\n    foo();\n    must_print(res)\n}\n\nfn foo() {\n    ()\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/tuples.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(3, PhantomData<&()>)) }
+───╯
+errors occured, compilation aborted

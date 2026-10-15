@@ -1,0 +1,60 @@
+---
+source: tests/run.rs
+expression: combined_output
+input_file: tests/inputs/array.must
+---
+EXIT CODE: 255
+
+--- STDOUT ---
+
+--- STDERR ---
+Error: type mismatch. expected: TypeId { data: Array(3, TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\n\nfn make_arr() -> [3]int {\n    [1, 2, 3]\n}\n\nfn modify(arr: *mut [3]int) {\n    (*arr)[2] = 42\n}\n\nfn arr_sum(arr: [3]int) -> int {\n    arr[0] + arr[1] + arr[2]\n}\n\nfn main() {\n    let mut arr = make_arr() in\n    arr[0] = 13;\n    modify(&arr);\n    must_print(arr_sum(arr))\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array.must" }, Ident { text: "int" }) }) }, got: TypeId { data: Array(3, TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }) }
+   ╭─[ /home/domin/Desktop/must/tests/inputs/array.must:5:5 ]
+   │
+ 5 │     [1, 2, 3]
+   │     ────┬────  
+   │         ╰────── type mismatch. expected: TypeId { data: Array(3, TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\n\nfn make_arr() -> [3]int {\n    [1, 2, 3]\n}\n\nfn modify(arr: *mut [3]int) {\n    (*arr)[2] = 42\n}\n\nfn arr_sum(arr: [3]int) -> int {\n    arr[0] + arr[1] + arr[2]\n}\n\nfn main() {\n    let mut arr = make_arr() in\n    arr[0] = 13;\n    modify(&arr);\n    must_print(arr_sum(arr))\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array.must" }, Ident { text: "int" }) }) }, got: TypeId { data: Array(3, TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }) }
+───╯
+Error: type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\n\nfn make_arr() -> [3]int {\n    [1, 2, 3]\n}\n\nfn modify(arr: *mut [3]int) {\n    (*arr)[2] = 42\n}\n\nfn arr_sum(arr: [3]int) -> int {\n    arr[0] + arr[1] + arr[2]\n}\n\nfn main() {\n    let mut arr = make_arr() in\n    arr[0] = 13;\n    modify(&arr);\n    must_print(arr_sum(arr))\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(1, PhantomData<&()>)) }
+   ╭─[ /home/domin/Desktop/must/tests/inputs/array.must:9:17 ]
+   │
+ 9 │     (*arr)[2] = 42
+   │                 ─┬  
+   │                  ╰── type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\n\nfn make_arr() -> [3]int {\n    [1, 2, 3]\n}\n\nfn modify(arr: *mut [3]int) {\n    (*arr)[2] = 42\n}\n\nfn arr_sum(arr: [3]int) -> int {\n    arr[0] + arr[1] + arr[2]\n}\n\nfn main() {\n    let mut arr = make_arr() in\n    arr[0] = 13;\n    modify(&arr);\n    must_print(arr_sum(arr))\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(1, PhantomData<&()>)) }
+───╯
+Error: type mismatch. expected: TypeId { data: Infer(InferVar(1, PhantomData<&()>)) }, got: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\n\nfn make_arr() -> [3]int {\n    [1, 2, 3]\n}\n\nfn modify(arr: *mut [3]int) {\n    (*arr)[2] = 42\n}\n\nfn arr_sum(arr: [3]int) -> int {\n    arr[0] + arr[1] + arr[2]\n}\n\nfn main() {\n    let mut arr = make_arr() in\n    arr[0] = 13;\n    modify(&arr);\n    must_print(arr_sum(arr))\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array.must" }, Ident { text: "int" }) }
+    ╭─[ /home/domin/Desktop/must/tests/inputs/array.must:13:5 ]
+    │
+ 13 │     arr[0] + arr[1] + arr[2]
+    │     ───┬──  
+    │        ╰──── type mismatch. expected: TypeId { data: Infer(InferVar(1, PhantomData<&()>)) }, got: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\n\nfn make_arr() -> [3]int {\n    [1, 2, 3]\n}\n\nfn modify(arr: *mut [3]int) {\n    (*arr)[2] = 42\n}\n\nfn arr_sum(arr: [3]int) -> int {\n    arr[0] + arr[1] + arr[2]\n}\n\nfn main() {\n    let mut arr = make_arr() in\n    arr[0] = 13;\n    modify(&arr);\n    must_print(arr_sum(arr))\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array.must" }, Ident { text: "int" }) }
+────╯
+Error: type mismatch. expected: TypeId { data: Infer(InferVar(1, PhantomData<&()>)) }, got: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\n\nfn make_arr() -> [3]int {\n    [1, 2, 3]\n}\n\nfn modify(arr: *mut [3]int) {\n    (*arr)[2] = 42\n}\n\nfn arr_sum(arr: [3]int) -> int {\n    arr[0] + arr[1] + arr[2]\n}\n\nfn main() {\n    let mut arr = make_arr() in\n    arr[0] = 13;\n    modify(&arr);\n    must_print(arr_sum(arr))\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array.must" }, Ident { text: "int" }) }
+    ╭─[ /home/domin/Desktop/must/tests/inputs/array.must:13:14 ]
+    │
+ 13 │     arr[0] + arr[1] + arr[2]
+    │              ───┬──  
+    │                 ╰──── type mismatch. expected: TypeId { data: Infer(InferVar(1, PhantomData<&()>)) }, got: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\n\nfn make_arr() -> [3]int {\n    [1, 2, 3]\n}\n\nfn modify(arr: *mut [3]int) {\n    (*arr)[2] = 42\n}\n\nfn arr_sum(arr: [3]int) -> int {\n    arr[0] + arr[1] + arr[2]\n}\n\nfn main() {\n    let mut arr = make_arr() in\n    arr[0] = 13;\n    modify(&arr);\n    must_print(arr_sum(arr))\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array.must" }, Ident { text: "int" }) }
+────╯
+Error: type mismatch. expected: TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }, got: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\n\nfn make_arr() -> [3]int {\n    [1, 2, 3]\n}\n\nfn modify(arr: *mut [3]int) {\n    (*arr)[2] = 42\n}\n\nfn arr_sum(arr: [3]int) -> int {\n    arr[0] + arr[1] + arr[2]\n}\n\nfn main() {\n    let mut arr = make_arr() in\n    arr[0] = 13;\n    modify(&arr);\n    must_print(arr_sum(arr))\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array.must" }, Ident { text: "int" }) }
+    ╭─[ /home/domin/Desktop/must/tests/inputs/array.must:13:23 ]
+    │
+ 13 │     arr[0] + arr[1] + arr[2]
+    │                       ───┬──  
+    │                          ╰──── type mismatch. expected: TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }, got: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\n\nfn make_arr() -> [3]int {\n    [1, 2, 3]\n}\n\nfn modify(arr: *mut [3]int) {\n    (*arr)[2] = 42\n}\n\nfn arr_sum(arr: [3]int) -> int {\n    arr[0] + arr[1] + arr[2]\n}\n\nfn main() {\n    let mut arr = make_arr() in\n    arr[0] = 13;\n    modify(&arr);\n    must_print(arr_sum(arr))\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array.must" }, Ident { text: "int" }) }
+────╯
+Error: type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\n\nfn make_arr() -> [3]int {\n    [1, 2, 3]\n}\n\nfn modify(arr: *mut [3]int) {\n    (*arr)[2] = 42\n}\n\nfn arr_sum(arr: [3]int) -> int {\n    arr[0] + arr[1] + arr[2]\n}\n\nfn main() {\n    let mut arr = make_arr() in\n    arr[0] = 13;\n    modify(&arr);\n    must_print(arr_sum(arr))\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }
+    ╭─[ /home/domin/Desktop/must/tests/inputs/array.must:13:5 ]
+    │
+ 13 │     arr[0] + arr[1] + arr[2]
+    │     ────────────┬───────────  
+    │                 ╰───────────── type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\n\nfn make_arr() -> [3]int {\n    [1, 2, 3]\n}\n\nfn modify(arr: *mut [3]int) {\n    (*arr)[2] = 42\n}\n\nfn arr_sum(arr: [3]int) -> int {\n    arr[0] + arr[1] + arr[2]\n}\n\nfn main() {\n    let mut arr = make_arr() in\n    arr[0] = 13;\n    modify(&arr);\n    must_print(arr_sum(arr))\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(0, PhantomData<&()>)) }
+────╯
+Error: type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\n\nfn make_arr() -> [3]int {\n    [1, 2, 3]\n}\n\nfn modify(arr: *mut [3]int) {\n    (*arr)[2] = 42\n}\n\nfn arr_sum(arr: [3]int) -> int {\n    arr[0] + arr[1] + arr[2]\n}\n\nfn main() {\n    let mut arr = make_arr() in\n    arr[0] = 13;\n    modify(&arr);\n    must_print(arr_sum(arr))\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(1, PhantomData<&()>)) }
+    ╭─[ /home/domin/Desktop/must/tests/inputs/array.must:18:14 ]
+    │
+ 18 │     arr[0] = 13;
+    │              ─┬  
+    │               ╰── type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nextern fn must_print(x: int);\n\nfn make_arr() -> [3]int {\n    [1, 2, 3]\n}\n\nfn modify(arr: *mut [3]int) {\n    (*arr)[2] = 42\n}\n\nfn arr_sum(arr: [3]int) -> int {\n    arr[0] + arr[1] + arr[2]\n}\n\nfn main() {\n    let mut arr = make_arr() in\n    arr[0] = 13;\n    modify(&arr);\n    must_print(arr_sum(arr))\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/array.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(1, PhantomData<&()>)) }
+────╯
+errors occured, compilation aborted

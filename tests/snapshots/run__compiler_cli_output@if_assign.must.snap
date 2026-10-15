@@ -1,0 +1,14 @@
+---
+source: tests/run.rs
+expression: combined_output
+input_file: tests/inputs/if_assign.must
+---
+EXIT CODE: 101
+
+--- STDOUT ---
+
+--- STDERR ---
+
+thread 'main' (46045) panicked at src/tp.rs:89:59:
+Error
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

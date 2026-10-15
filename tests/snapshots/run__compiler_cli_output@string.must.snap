@@ -1,0 +1,14 @@
+---
+source: tests/run.rs
+expression: combined_output
+input_file: tests/inputs/string.must
+---
+EXIT CODE: 101
+
+--- STDOUT ---
+
+--- STDERR ---
+
+thread 'main' (46129) panicked at src/driver.rs:86:38:
+couldnt open file: Os { code: 2, kind: NotFound, message: "No such file or directory" }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

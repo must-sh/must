@@ -1,0 +1,10 @@
+---
+source: tests/run.rs
+expression: combined_output
+input_file: tests/inputs/traceroute.must
+---
+EXIT CODE: 0
+
+--- STDOUT ---
+
+--- STDERR ---

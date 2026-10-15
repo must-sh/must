@@ -1,5 +1,6 @@
 use std::{fmt::Display, ops::Range};
 
+use ariadne::Config;
 use lalrpop_util::ParseError;
 
 use crate::{ast::Span, input};
@@ -40,6 +41,7 @@ impl Diagnostic {
     pub fn as_ariadne_report<'a>(
         &self,
         filename: &'a String,
+        color: bool,
     ) -> ariadne::Report<'a, (&'a String, Range<usize>)> {
         let mut builder = ariadne::Report::build(
             ariadne::ReportKind::Error,
@@ -49,7 +51,8 @@ impl Diagnostic {
         .with_label(
             ariadne::Label::new((filename, self.start_byte..self.end_byte))
                 .with_message(&self.message),
-        );
+        )
+        .with_config(Config::new().with_color(color));
         builder.with_notes(&self.notes);
         builder.finish()
     }

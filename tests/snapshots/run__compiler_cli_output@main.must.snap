@@ -1,0 +1,20 @@
+---
+source: tests/run.rs
+expression: combined_output
+input_file: tests/inputs/main.must
+---
+EXIT CODE: 255
+
+--- STDOUT ---
+
+--- STDERR ---
+Error: type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nfn main() -> int {\n    let mut i = 0 in\n    let mut sum = 0 in\n    while i < 10 {\n        sum = sum + i;\n        i = i + 1\n    };\n    sum\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/main.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(1, PhantomData<&()>)) }
+   ╭─[ /home/domin/Desktop/must/tests/inputs/main.must:3:5 ]
+   │
+ 3 │ ╭─▶     let mut i = 0 in
+   ┆ ┆   
+ 9 │ ├─▶     sum
+   │ │             
+   │ ╰───────────── type mismatch. expected: TypeId { data: Var(Source { [salsa id]: Id(0), text: "\nfn main() -> int {\n    let mut i = 0 in\n    let mut sum = 0 in\n    while i < 10 {\n        sum = sum + i;\n        i = i + 1\n    };\n    sum\n}\n", file_name: "/home/domin/Desktop/must/tests/inputs/main.must" }, Ident { text: "int" }) }, got: TypeId { data: Infer(InferVar(1, PhantomData<&()>)) }
+───╯
+errors occured, compilation aborted
