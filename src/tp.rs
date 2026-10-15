@@ -496,7 +496,7 @@ impl<'a> Env<'a> {
             ExprData::Var(x) => match self.get_var(x) {
                 Some(VarBinding { tp, is_mut }) => (tp, is_mut),
                 None => {
-                    Diagnostic::unbound_var(db, e.span(db), x, self.source);
+                    Diagnostic::unbound_var(db, e.span(db), x, self.source).accumulate(db);
                     (TypeData::Error.wrap(db), true)
                 }
             },
