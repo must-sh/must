@@ -3,7 +3,7 @@ use std::{fs::read_to_string, path::PathBuf, process::exit};
 use clap::Parser;
 use salsa::DatabaseImpl;
 
-use crate::{diagnostic::Diagnostic, input::Source, vm::VM};
+use crate::{diagnostic::Diagnostic, input::Source};
 
 mod ast;
 mod bytecode;
@@ -15,7 +15,6 @@ mod input;
 mod lowerer;
 mod resolve;
 mod tp;
-mod vm;
 
 lalrpop_util::lalrpop_mod!(parser);
 
@@ -44,13 +43,6 @@ fn main() {
     let mut p = PathBuf::from(root_dir);
     p.set_extension("o");
     std::fs::write(&p, bytes).unwrap();
-    std::process::Command::new("cc")
-        .arg(p)
-        .arg("-o")
-        .arg("a.out")
-        .arg("-lm")
-        .status()
-        .expect("failed to run cc");
 }
 
 fn check_and_compile(db: &DatabaseImpl, filename: &String, color: bool) -> bytecode::Prog {
