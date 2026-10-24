@@ -122,6 +122,7 @@ Expr9 = SpannedExpr<Expr9Data>;
 Expr10 = SpannedExpr<Expr10Data>;
 Expr20 = SpannedExpr<Expr20Data>;
 Expr30 = SpannedExpr<Expr30Data>;
+Expr32 = SpannedExpr<Expr32Data>;
 Expr35 = SpannedExpr<Expr35Data>;
 Expr40 = SpannedExpr<Expr40Data>;
 
@@ -172,6 +173,11 @@ Expr30Data: ExprData<'db> = {
     <x: Expr30> "*" <y: Expr35> => ExprData::Binop(Binop::Mul, x, y),
     <x: Expr30> "/" <y: Expr35> => ExprData::Binop(Binop::Div, x, y),
     <x: Expr30> "%" <y: Expr35> => ExprData::Binop(Binop::Mod, x, y),
+    Expr32Data
+}
+
+Expr32Data: ExprData<'db> = {
+    <e: Expr32> "as" <tp: Type> => ExprData::Cast(e, tp),
     Expr35Data
 }
 
@@ -201,8 +207,6 @@ Expr40Data: ExprData<'db> = {
     <e1: Expr40> "[" <e2: Expr0> "]" => ExprData::Index(e1, e2),
     <id: Ident> ".{" <fields: CommaSep<StructInit>> "}" => ExprData::Struct(id, fields),
     "[" <exprs: CommaSep<Expr0>> "]" => ExprData::Array(exprs),
-
-    <e: Expr40> "as" <tp: Type> => ExprData::Cast(e, tp),
 
     ! => {
         Diagnostic::parser_error(<>.error, source).accumulate(db);
