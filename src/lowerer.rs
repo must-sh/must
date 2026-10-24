@@ -221,9 +221,15 @@ impl<'a> Builder<'a> {
     /// place before copying it.
     pub fn lower(&mut self, e: ExprId<'a>, dest: Place) {
         match e.data(self.db) {
-            ExprData::Number(n) => {
+            ExprData::Int(n) => {
                 let tp = self.get_layout_of_expr(e).as_primitive().unwrap();
                 self.push_inst(Inst::PushInt(n, tp));
+                dest.store(self);
+            }
+            ExprData::Float(n) => {
+                let tp = self.get_layout_of_expr(e).as_primitive().unwrap();
+                let fnum = n.text(self.db).parse().unwrap(); // TODO: this fails if user float is improper
+                self.push_inst(Inst::PushFloat(fnum, tp));
                 dest.store(self);
             }
             ExprData::Char(c) => {

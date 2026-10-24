@@ -199,6 +199,16 @@ impl Lowerer {
                         };
                         stack.push(v);
                     }
+                    bytecode::Inst::PushFloat(n, tp) => {
+                        let v = match tp {
+                            bytecode::Type::Float16 => unimplemented!(),
+                            bytecode::Type::Float32 => b.ins().f32const(n as f32),
+                            bytecode::Type::Float64 => b.ins().f64const(n as f64),
+                            bytecode::Type::Float128 => unimplemented!(),
+                            _ => unreachable!(),
+                        };
+                        stack.push(v);
+                    }
                     bytecode::Inst::PushBool(n) => {
                         let v = b.ins().iconst(types::I8, n as i64);
                         stack.push(v);

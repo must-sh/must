@@ -113,3 +113,16 @@ pub fn parse_char_literal(s: &str) -> Result<u8, String> {
 
     Err("invalid char literal format".into())
 }
+
+pub fn parse_int(s: &str) -> Result<i64, std::num::ParseIntError> {
+    let s = s.replace('_', "");
+    if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
+        i64::from_str_radix(hex, 16)
+    } else if let Some(bin) = s.strip_prefix("0b").or_else(|| s.strip_prefix("0B")) {
+        i64::from_str_radix(bin, 2)
+    } else if let Some(oct) = s.strip_prefix("0o").or_else(|| s.strip_prefix("0O")) {
+        i64::from_str_radix(oct, 8)
+    } else {
+        s.parse::<i64>()
+    }
+}

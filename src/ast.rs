@@ -51,7 +51,8 @@ pub struct ExprId {
 
 #[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::Update)]
 pub enum ExprData<'db> {
-    Number(i64),
+    Int(i64),
+    Float(StrLit<'db>),
     Bool(bool),
     Char(u8),
     Str(StrLit<'db>),

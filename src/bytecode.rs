@@ -11,6 +11,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub enum Inst {
     PushInt(i64, Type),
+    PushFloat(f64, Type),
     PushBool(bool),
     Binop(Binop, Type),
     Unop(Unop, Type),
@@ -41,6 +42,7 @@ impl Display for Inst {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Inst::PushInt(n, _) => write!(f, "push {n}"),
+            Inst::PushFloat(n, _) => write!(f, "push {n}"),
             Inst::PushBool(b) => write!(f, "push {b}"),
             Inst::Binop(op, _) => write!(f, "{op}"),
             Inst::Unop(op, _) => write!(f, "{op}"),

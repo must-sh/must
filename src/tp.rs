@@ -25,6 +25,7 @@ pub struct InferVar<'db>(pub u32, pub PhantomData<&'db ()>);
 pub enum InferValue<'db> {
     Unbound,
     Numeric,
+    Float,
     Bound(TypeId<'db>),
 }
 
@@ -55,7 +56,11 @@ impl<'db> UnifyValue for InferValue<'db> {
             }
             (InferValue::Bound(t), _) | (_, InferValue::Bound(t)) => Ok(InferValue::Bound(*t)),
             // If either is constrained to be numeric, propagate the constraint.
+            (InferValue::Float, InferValue::Numeric) | (InferValue::Numeric, InferValue::Float) => {
+                Ok(InferValue::Float)
+            }
             (InferValue::Numeric, _) | (_, InferValue::Numeric) => Ok(InferValue::Numeric),
+            (InferValue::Float, _) | (_, InferValue::Float) => Ok(InferValue::Float),
             (InferValue::Unbound, InferValue::Unbound) => Ok(InferValue::Unbound),
         }
     }
@@ -323,6 +328,11 @@ impl<'a> Env<'a> {
         TypeData::Infer(var).wrap(self.db)
     }
 
+    pub fn new_float_var(&mut self) -> TypeId<'a> {
+        let var = self.unif_table.new_key(InferValue::Float);
+        TypeData::Infer(var).wrap(self.db)
+    }
+
     pub fn new_unbound_var(&mut self) -> TypeId<'a> {
         let var = self.unif_table.new_key(InferValue::Unbound);
         TypeData::Infer(var).wrap(self.db)
@@ -426,7 +436,8 @@ impl<'a> Env<'a> {
     pub fn infer_expr(&mut self, e: ExprId<'a>) -> (TypeId<'a>, bool) {
         let db = self.db;
         let (tp, is_mut) = match e.data(db) {
-            ExprData::Number(_) => (self.new_numeric_var(), false),
+            ExprData::Int(_) => (self.new_numeric_var(), false),
+            ExprData::Float(_) => (self.new_float_var(), false),
             ExprData::Char(_) => (TypeData::Primitive(UInt8).wrap(db), false),
             ExprData::Str(s) => {
                 let n = s.text(db).len();
@@ -782,6 +793,7 @@ impl<'a> Env<'a> {
         match tp.data(db) {
             TypeData::Infer(id) => match self.unif_table.probe_value(id) {
                 InferValue::Numeric => TypeData::Primitive(bytecode::Type::Int64).wrap(db),
+                InferValue::Float => TypeData::Primitive(bytecode::Type::Float32).wrap(db),
                 InferValue::Bound(tp) => self.zonk(tp),
                 InferValue::Unbound => TypeData::Error.wrap(db),
             },

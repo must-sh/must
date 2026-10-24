@@ -4,7 +4,7 @@ use crate::bytecode;
 use crate::diagnostic::Diagnostic;
 use salsa::Accumulator;
 use crate::common::{Binop, Unop};
-use crate::input::{unescape_json_string, parse_char_literal};
+use crate::input::{unescape_json_string, parse_char_literal, parse_int};
 
 grammar<'db>(db: &'db dyn salsa::Database, source: crate::input::Source);
 
@@ -102,7 +102,8 @@ CharLit: u8 = {
     }
 };
 
-Num: i64 = <s: r"[0-9]+"> => s.parse().unwrap();
+IntNum: i64 = <s: r"(0[xX][0-9a-fA-F][0-9a-fA-F_]*|0[bB][01][01_]*|0[oO][0-7][0-7_]*|[0-9][0-9_]*)"> => parse_int(s).unwrap();
+FloatNum: StrLit<'db> = <s: r"[0-9]+\.[0-9]+([eE][+-]?[0-9]+)?"> => StrLit::new(db, <>);
 
 // ==== Expressions ============================================================
 
@@ -189,7 +190,8 @@ Expr40Data: ExprData<'db> = {
     "(" <exprs: TwoOrMore<Expr0>> ")" => ExprData::Tuple(exprs),
     <id: Ident> => ExprData::Var(id),
     <e: Expr40> "(" <args: CommaSep<Expr0>> ")" => ExprData::FnCall(e, args),
-    <n: Num> => ExprData::Number(n),
+    <n: IntNum> => ExprData::Int(n),
+    <n: FloatNum> => ExprData::Float(n),
     <s: StrLit> => ExprData::Str(s),
     <c: CharLit> => ExprData::Char(c),
     "true" => ExprData::Bool(true),
@@ -266,7 +268,7 @@ TypeData: TypeData<'db> = {
     "(" ")" => TypeData::Tuple(vec![]),
     "(" <tps: TwoOrMore<Type>> ")" => TypeData::Tuple(tps),
     <id: Ident> => TypeData::Var(source, id),
-    "[" <n: Num> "]" <tp: Type> => TypeData::Array(n as usize, tp),
+    "[" <n: IntNum> "]" <tp: Type> => TypeData::Array(n as usize, tp),
     "[" "]" <tp: Type> => TypeData::Slice(tp, false),
     "[" "]" "mut" <tp: Type> => TypeData::Slice(tp, true),
 }
