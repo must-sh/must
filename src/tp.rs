@@ -16,6 +16,12 @@ pub struct TypeId {
     pub data: TypeData<'db>,
 }
 
+impl<'a> TypeId<'a> {
+    pub fn to_string(self, db: &dyn Database) -> String {
+        self.data(db).to_string(db)
+    }
+}
+
 use ena::unify::{UnifyKey, UnifyValue};
 
 #[derive(Debug, Hash, Eq, PartialEq, Clone, Copy, salsa::Update)]
@@ -85,6 +91,40 @@ pub enum TypeData<'db> {
 impl<'db> TypeData<'db> {
     pub fn wrap(self, db: &'db dyn Database) -> TypeId<'db> {
         TypeId::new(db, self)
+    }
+
+    pub fn to_string(self, db: &'db dyn Database) -> String {
+        match self {
+            TypeData::Error => format!("{:?}", self),
+            TypeData::Infer(infer_var) => format!("?{}", infer_var.index()),
+            TypeData::Primitive(tp) => format!("{:?}", tp),
+            TypeData::Range => format!("Range"),
+            TypeData::Fn(ref fn_sig) => {
+                format!(
+                    "fn({}) -> {}",
+                    fn_sig
+                        .args
+                        .iter()
+                        .map(|t| t.to_string(db))
+                        .collect::<Vec<String>>()
+                        .join(", "),
+                    fn_sig.ret.to_string(db)
+                )
+            }
+            TypeData::Ptr(tp, true) => format!("*mut {}", tp.to_string(db)),
+            TypeData::Ptr(tp, false) => format!("*{}", tp.to_string(db)),
+            TypeData::Slice(tp, true) => format!("[]mut {}", tp.to_string(db)),
+            TypeData::Slice(tp, false) => format!("[]{}", tp.to_string(db)),
+            TypeData::Tuple(ref tps) => format!(
+                "({})",
+                tps.iter()
+                    .map(|t| t.to_string(db))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
+            TypeData::Var(_, ident) => ident.text(db).clone(),
+            TypeData::Array(n, tp) => format!("[{}]{}", n, tp.to_string(db)),
+        }
     }
 }
 
@@ -172,7 +212,11 @@ impl Diagnostic {
             db,
             source,
             span,
-            format!("type mismatch. expected: {:?}, got: {:?}", exp, got),
+            format!(
+                "type mismatch. expected: {}, got: {}",
+                exp.to_string(db),
+                got.to_string(db)
+            ),
         )
     }
 
@@ -515,6 +559,7 @@ impl<'a> Env<'a> {
                 let (tp, _) = self.infer_expr(fn_expr);
                 let sig = match tp.data(db) {
                     TypeData::Fn(sig) => sig,
+                    TypeData::Error => return (TypeData::Error.wrap(db), true),
                     _ => {
                         Diagnostic::not_a_function(db, fn_expr.span(db), self.source)
                             .accumulate(db);
