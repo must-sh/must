@@ -149,16 +149,15 @@ impl<'a> Builder<'a> {
         x
     }
 
-    pub fn lower_place(&mut self, e: ExprId<'a>) -> Option<Place> {
+    pub fn lower_place(&mut self, e: ExprId<'a>) -> Place {
         match e.data(self.db) {
             ExprData::Error => panic!(),
-            ExprData::Var(x) => Some(self.get_var(x)),
+            ExprData::Var(x) => self.get_var(x),
             ExprData::Field(expr, name) => {
                 let tp_struct = self.get_tp(expr);
                 let offset = self.get_offset(tp_struct, name);
-                let place = self.lower_place(expr).unwrap();
-                let src = place.add_offset(offset);
-                Some(src)
+                let place = self.lower_place(expr);
+                place.add_offset(offset)
             }
             ExprData::Let(pat, e1, e2) => {
                 let place = self.lower_into_tmp(e1);
@@ -168,10 +167,10 @@ impl<'a> Builder<'a> {
             }
             ExprData::Deref(expr) => {
                 let id = self.lower_into_tmp(expr).as_local_id().unwrap();
-                Some(Place::Ref {
+                Place::Ref {
                     local_id: id,
                     offset: 0,
-                })
+                }
             }
             ExprData::Seq(e1, e2) => {
                 self.lower_into_tmp(e1);
@@ -188,11 +187,8 @@ impl<'a> Builder<'a> {
                             }
                         }
                         TypeData::Array(_, tp) => {
-                            self.lower_place(e1).unwrap().leave_addr(self);
-                            {
-                                let this = &self;
-                                tp.layout(this.db)
-                            }
+                            self.lower_place(e1).leave_addr(self);
+                            tp.layout(self.db)
                         }
                         _ => panic!(),
                     };
@@ -208,12 +204,12 @@ impl<'a> Builder<'a> {
 
                     self.push_inst(Inst::CapOffset);
                     let place = self.store_ptr();
-                    Some(place)
+                    place
                 }
-                TypeData::Range => None,
+                TypeData::Range => self.lower_into_tmp(e),
                 _ => panic!(),
             },
-            _ => None,
+            _ => self.lower_into_tmp(e),
         }
     }
 
@@ -299,7 +295,7 @@ impl<'a> Builder<'a> {
                     }
                 }
 
-                self.lower_place(expr).unwrap().leave_addr(self);
+                self.lower_place(expr).leave_addr(self);
 
                 let sig = match self.get_tp(expr).data(self.db) {
                     TypeData::Fn(sig) => FuncSig::from_ast_sig(self.db, sig),
@@ -357,17 +353,15 @@ impl<'a> Builder<'a> {
                 self.switch_to_block(next_block);
             }
             ExprData::Assign(e1, e2) => {
-                let dest = self.lower_place(e1).unwrap();
+                let dest = self.lower_place(e1);
                 self.lower(e2, dest);
             }
             ExprData::Deref(expr) => {
                 let layout = self.get_layout_of_expr(e);
-                self.lower_place(expr).unwrap().copy_to(self, dest, &layout);
+                self.lower_place(expr).copy_to(self, dest, &layout);
             }
             ExprData::AddressOf(e) => {
-                self.lower_place(e)
-                    .unwrap_or_else(|| self.lower_into_tmp(e))
-                    .leave_addr(self);
+                self.lower_place(e).leave_addr(self);
                 dest.store(self);
             }
             ExprData::Tuple(exprs) => {
@@ -407,7 +401,7 @@ impl<'a> Builder<'a> {
             }
             ExprData::Field(_, _) => {
                 let layout = &self.get_layout_of_expr(e);
-                let src = self.lower_place(e).unwrap();
+                let src = self.lower_place(e);
                 src.copy_to(self, dest, layout);
             }
             ExprData::Array(exprs) => {
@@ -428,7 +422,7 @@ impl<'a> Builder<'a> {
                         tp.layout(self.db)
                     }
                     TypeData::Array(_, tp) => {
-                        self.lower_place(e1).unwrap().leave_addr(self);
+                        self.lower_place(e1).leave_addr(self);
                         tp.layout(self.db)
                     }
                     _ => panic!(),
