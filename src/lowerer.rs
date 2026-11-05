@@ -7,6 +7,7 @@ use crate::{
     bytecode::{self, Block, Func, FuncSig, Inst, Terminator},
     common::Binop,
     driver::type_check_func,
+    input::Source,
     resolve::{self, Item},
     tp::{self, TypeData, TypeId, struct_fields},
 };
@@ -84,7 +85,7 @@ impl Place {
                     offset: 0,
                     tp: bytecode::Type::UInt64,
                 });
-                b.push_inst(Inst::PushInt(offset as i64, bytecode::Type::Int64));
+                b.push_inst(Inst::PushInt(offset as u64, bytecode::Type::Int64));
                 b.push_inst(Inst::CapOffset)
             }
         };
@@ -115,6 +116,7 @@ pub struct Builder<'a> {
     variables: Vec<bytecode::Layout>,
     db: &'a dyn Database,
     func: ast::FnDef<'a>,
+    source: Source,
 }
 
 impl<'a> Builder<'a> {
@@ -126,6 +128,7 @@ impl<'a> Builder<'a> {
             current_block: 0,
             db,
             func,
+            source: func.sf(db),
         }
     }
 
@@ -139,7 +142,7 @@ impl<'a> Builder<'a> {
     }
 
     pub fn get_layout_of_expr(&self, e: ExprId<'a>) -> bytecode::Layout {
-        self.get_tp(e).layout(self.db)
+        self.get_tp(e).layout(self.db, self.source)
     }
 
     pub fn lower_into_tmp(&mut self, e: ExprId<'a>) -> Place {
@@ -183,12 +186,12 @@ impl<'a> Builder<'a> {
                             self.lower_into_tmp(e1).load(self, bytecode::Type::UInt64);
                             {
                                 let this = &self;
-                                tp.layout(this.db)
+                                tp.layout(this.db, self.source)
                             }
                         }
                         TypeData::Array(_, tp) => {
                             self.lower_place(e1).leave_addr(self);
-                            tp.layout(self.db)
+                            tp.layout(self.db, self.source)
                         }
                         _ => panic!(),
                     };
@@ -197,7 +200,7 @@ impl<'a> Builder<'a> {
 
                     idx_place.load(self, bytecode::Type::UInt64); // start
                     self.push_inst(Inst::PushInt(
-                        elem_layout.size() as i64,
+                        elem_layout.size() as u64,
                         bytecode::Type::UInt64,
                     ));
                     self.push_inst(Inst::Binop(Binop::Mul, bytecode::Type::UInt64));
@@ -229,13 +232,13 @@ impl<'a> Builder<'a> {
                 dest.store(self);
             }
             ExprData::Char(c) => {
-                self.push_inst(Inst::PushInt(c as i64, bytecode::Type::UInt8));
+                self.push_inst(Inst::PushInt(c as u64, bytecode::Type::UInt8));
                 dest.store(self);
             }
             ExprData::Str(s) => {
                 let bytes = s.text(self.db).as_bytes();
                 for i in 0..bytes.len() {
-                    self.push_inst(Inst::PushInt(bytes[i] as i64, bytecode::Type::UInt8));
+                    self.push_inst(Inst::PushInt(bytes[i] as u64, bytecode::Type::UInt8));
                     dest.add_offset(i as u32).store(self);
                 }
                 self.push_inst(Inst::PushInt(0, bytecode::Type::UInt8));
@@ -298,7 +301,7 @@ impl<'a> Builder<'a> {
                 self.lower_place(expr).leave_addr(self);
 
                 let sig = match self.get_tp(expr).data(self.db) {
-                    TypeData::Fn(sig) => FuncSig::from_ast_sig(self.db, sig),
+                    TypeData::Fn(sig) => FuncSig::from_ast_sig(self.db, sig, self.source),
                     _ => panic!(),
                 };
 
@@ -419,11 +422,11 @@ impl<'a> Builder<'a> {
                 let elem_layout = match self.get_tp(e1).data(self.db) {
                     TypeData::Slice(tp, _) => {
                         self.lower_into_tmp(e1).load(self, bytecode::Type::UInt64);
-                        tp.layout(self.db)
+                        tp.layout(self.db, self.source)
                     }
                     TypeData::Array(_, tp) => {
                         self.lower_place(e1).leave_addr(self);
-                        tp.layout(self.db)
+                        tp.layout(self.db, self.source)
                     }
                     _ => panic!(),
                 };
@@ -432,7 +435,7 @@ impl<'a> Builder<'a> {
 
                 idx_place.load(self, bytecode::Type::UInt64); // start
                 self.push_inst(Inst::PushInt(
-                    elem_layout.size() as i64,
+                    elem_layout.size() as u64,
                     bytecode::Type::UInt64,
                 ));
                 self.push_inst(Inst::Binop(Binop::Mul, bytecode::Type::UInt64));
@@ -470,10 +473,10 @@ impl<'a> Builder<'a> {
                 assert_eq!(field_name.text(self.db), "len");
                 8
             }
-            TypeData::Var(sf, id) => {
-                let fields = struct_fields(self.db, sf, id);
+            TypeData::Var(id) => {
+                let fields = struct_fields(self.db, self.func.sf(self.db), id);
                 let field_id = fields.get(&field_name).unwrap().0;
-                let layout = tp.layout(self.db);
+                let layout = tp.layout(self.db, self.source);
                 match layout.fields {
                     bytecode::Fields::Struct { fields } => fields[field_id].0,
                     _ => panic!(),
@@ -489,7 +492,7 @@ impl<'a> Builder<'a> {
             PatternData::Var(name, _) => {
                 let layout = {
                     let this = &self;
-                    tp.layout(this.db)
+                    tp.layout(this.db, self.source)
                 };
                 let id = self.new_var(name, tp);
                 place.copy_to(self, id, &layout);
@@ -522,7 +525,7 @@ impl<'a> Builder<'a> {
         for (arg, tp) in self.func.args(self.db).into_iter().rev() {
             let layout = {
                 let this = &self;
-                tp.layout(this.db)
+                tp.layout(this.db, self.source)
             };
             // if its extern, we can lower but whatever, they will be freed anyways
             match layout.abi() {
@@ -541,7 +544,7 @@ impl<'a> Builder<'a> {
         }
 
         let ret = if let Some(tp) = self.func.ret(self.db) {
-            tp.layout(self.db)
+            tp.layout(self.db, self.source)
         } else {
             bytecode::Layout::unit()
         };
@@ -596,7 +599,7 @@ impl<'a> Builder<'a> {
         let id = self.variables.len();
         let layout = {
             let this = &self;
-            tp.layout(this.db)
+            tp.layout(this.db, self.source)
         };
         self.variables.push(layout);
         Place::Local { id, offset: 0 }
@@ -615,6 +618,10 @@ impl<'a> Builder<'a> {
             match resolve::get_item(self.db, self.func.sf(self.db), x) {
                 Some(Item::Function { full_name, .. }) => {
                     self.push_inst(Inst::FnAddr(full_name));
+                    self.store_ptr()
+                }
+                Some(Item::Static { is_mut, tp }) => {
+                    self.push_inst(Inst::Global(x.text(self.db).clone()));
                     self.store_ptr()
                 }
                 _ => panic!(),

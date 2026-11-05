@@ -1,0 +1,19 @@
+---
+source: tests/run.rs
+assertion_line: 23
+expression: combined_output
+input_file: tests/inputs/address.must
+---
+EXIT CODE: 255
+
+--- STDOUT ---
+
+--- STDERR ---
+Error: type mismatch. expected: *int, got: *?0
+   ╭─[ /home/domin/Desktop/must/tests/inputs/address.must:5:16 ]
+   │
+ 5 │     must_print(&4)
+   │                ─┬  
+   │                 ╰── type mismatch. expected: *int, got: *?0
+───╯
+errors occured, compilation aborted

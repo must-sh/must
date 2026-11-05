@@ -4,13 +4,15 @@ use salsa::Database;
 
 use crate::{
     common::{Binop, Unop},
+    eval,
+    input::Source,
     tp::FnSig,
 };
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Inst {
-    PushInt(i64, Type),
+    PushInt(u64, Type),
     PushFloat(f64, Type),
     PushBool(bool),
     Binop(Binop, Type),
@@ -36,6 +38,8 @@ pub enum Inst {
     Call(String),
     CallDynamic(FuncSig),
     FnAddr(String),
+
+    Global(String),
 }
 
 impl Display for Inst {
@@ -58,6 +62,7 @@ impl Display for Inst {
             Inst::MemCopy { size, align } => write!(f, "memcpy {size}, {align}"),
             Inst::CallDynamic(_) => write!(f, "calldyn"),
             Inst::FnAddr(name) => write!(f, "fnaddr {name:?}"),
+            Inst::Global(name) => write!(f, "global {name:?}"),
         }
     }
 }
@@ -283,9 +288,9 @@ pub struct FuncSig {
 }
 
 impl FuncSig {
-    pub fn from_ast_sig(db: &dyn Database, sig: FnSig) -> Self {
-        let args = sig.args.into_iter().map(|tp| tp.layout(db)).collect();
-        let ret = sig.ret.layout(db);
+    pub fn from_ast_sig(db: &dyn Database, sig: FnSig, sf: Source) -> Self {
+        let args = sig.args.into_iter().map(|tp| tp.layout(db, sf)).collect();
+        let ret = sig.ret.layout(db, sf);
         Self { args, ret }
     }
 }
@@ -304,6 +309,7 @@ impl Display for Func {
 pub struct Prog {
     pub funcs: HashMap<String, Func>,
     pub externs: HashMap<String, FuncSig>,
+    pub statics: HashMap<String, (eval::Value, bool)>,
 }
 
 impl Display for Prog {

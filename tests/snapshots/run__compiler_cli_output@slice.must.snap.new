@@ -1,0 +1,26 @@
+---
+source: tests/run.rs
+assertion_line: 23
+expression: combined_output
+input_file: tests/inputs/slice.must
+---
+EXIT CODE: 255
+
+--- STDOUT ---
+
+--- STDERR ---
+Error: type mismatch. expected: []int, got: []?0
+   ╭─[ /home/domin/Desktop/must/tests/inputs/slice.must:8:9 ]
+   │
+ 8 │     foo(slice, slice)
+   │         ──┬──  
+   │           ╰──── type mismatch. expected: []int, got: []?0
+───╯
+Error: type mismatch. expected: []int, got: []?0
+   ╭─[ /home/domin/Desktop/must/tests/inputs/slice.must:8:16 ]
+   │
+ 8 │     foo(slice, slice)
+   │                ──┬──  
+   │                  ╰──── type mismatch. expected: []int, got: []?0
+───╯
+errors occured, compilation aborted

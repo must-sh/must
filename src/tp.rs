@@ -84,7 +84,7 @@ pub enum TypeData<'db> {
     Ptr(TypeId<'db>, bool),
     Slice(TypeId<'db>, bool),
     Tuple(Vec<TypeId<'db>>),
-    Var(Source, Ident<'db>),
+    Var(Ident<'db>),
     Array(usize, TypeId<'db>),
 }
 
@@ -122,14 +122,14 @@ impl<'db> TypeData<'db> {
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
-            TypeData::Var(_, ident) => ident.text(db).clone(),
+            TypeData::Var(ident) => ident.text(db).clone(),
             TypeData::Array(n, tp) => format!("[{}]{}", n, tp.to_string(db)),
         }
     }
 }
 
 impl<'db> TypeId<'db> {
-    pub(crate) fn layout(&self, db: &dyn Database) -> bytecode::Layout {
+    pub(crate) fn layout(&self, db: &dyn Database, sf: Source) -> bytecode::Layout {
         match self.data(db) {
             r @ (TypeData::Error | TypeData::Infer(_)) => panic!("{:?}", r),
             TypeData::Primitive(tp) => bytecode::Layout::primitive(tp),
@@ -144,9 +144,9 @@ impl<'db> TypeId<'db> {
                 bytecode::Layout::primitive(bytecode::Type::UInt64),
             ]),
             TypeData::Tuple(items) => bytecode::Layout::strct(
-                &items.iter().map(|tp| tp.layout(db)).collect::<Vec<_>>()[..],
+                &items.iter().map(|tp| tp.layout(db, sf)).collect::<Vec<_>>()[..],
             ),
-            TypeData::Var(sf, tv) => {
+            TypeData::Var(tv) => {
                 let fields = struct_fields(db, sf, tv);
                 let mut fields = fields
                     .iter()
@@ -156,11 +156,11 @@ impl<'db> TypeId<'db> {
                 bytecode::Layout::strct(
                     &fields
                         .iter()
-                        .map(|(_, tp)| tp.layout(db))
+                        .map(|(_, tp)| tp.layout(db, sf))
                         .collect::<Vec<_>>()[..],
                 )
             }
-            TypeData::Array(n, tp) => bytecode::Layout::array(n, tp.layout(db)),
+            TypeData::Array(n, tp) => bytecode::Layout::array(n, tp.layout(db, sf)),
         }
     }
 }
@@ -423,7 +423,7 @@ impl<'a> Env<'a> {
 
             (TypeData::Infer(var), _) => self.bind_var(var, into),
             (_, TypeData::Infer(var)) => self.bind_var(var, from),
-            (TypeData::Var(sf1, id1), TypeData::Var(sf2, id2)) => sf1 == sf2 && id1 == id2,
+            (TypeData::Var(id1), TypeData::Var(id2)) => id1 == id2,
             (TypeData::Tuple(tps1), TypeData::Tuple(tps2)) => {
                 tps1.len() == tps2.len()
                     && tps1
@@ -660,7 +660,7 @@ impl<'a> Env<'a> {
                             }
                         }
                     }
-                    TypeData::Var(self.source, name).wrap(db)
+                    TypeData::Var(name).wrap(db)
                 };
                 (tp, false)
             }
@@ -668,8 +668,8 @@ impl<'a> Env<'a> {
                 let (tp, is_mut) = self.infer_expr(expr);
                 match self.weak_resolve(tp).data(db) {
                     TypeData::Error => (TypeData::Error.wrap(db), true),
-                    TypeData::Var(sf, tv) => {
-                        if let Some(tp) = struct_fields(db, sf, tv).get(&ident) {
+                    TypeData::Var(tv) => {
+                        if let Some(tp) = struct_fields(db, self.source, tv).get(&ident) {
                             (tp.1, is_mut)
                         } else {
                             Diagnostic::no_field_on_type(db, e.span(db), ident, tp, self.source)
@@ -786,6 +786,7 @@ impl<'a> Env<'a> {
                         is_mut: false,
                     })
                 }
+                Some(Item::Static { is_mut, tp }) => Some(VarBinding { tp, is_mut }),
                 _ => None,
             })
     }
@@ -842,7 +843,7 @@ impl<'a> Env<'a> {
                 InferValue::Bound(tp) => self.zonk(tp),
                 InferValue::Unbound => TypeData::Error.wrap(db),
             },
-            TypeData::Var(_, _) | TypeData::Error | TypeData::Primitive(_) | TypeData::Range => tp,
+            TypeData::Var(_) | TypeData::Error | TypeData::Primitive(_) | TypeData::Range => tp,
             TypeData::Fn(fn_sig) => {
                 let args = fn_sig.args.into_iter().map(|tp| self.zonk(tp)).collect();
                 let ret = self.zonk(fn_sig.ret);

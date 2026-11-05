@@ -1,0 +1,82 @@
+---
+source: tests/run.rs
+assertion_line: 23
+expression: combined_output
+input_file: tests/inputs/array_big.must
+---
+EXIT CODE: 255
+
+--- STDOUT ---
+
+--- STDERR ---
+Error: type mismatch. expected: ?0, got: int
+   ╭─[ /home/domin/Desktop/must/tests/inputs/array_big.must:9:14 ]
+   │
+ 9 │     (*s).y = (*s).z + 42
+   │              ───┬──  
+   │                 ╰──── type mismatch. expected: ?0, got: int
+───╯
+Error: type mismatch. expected: int, got: ?0
+   ╭─[ /home/domin/Desktop/must/tests/inputs/array_big.must:9:14 ]
+   │
+ 9 │     (*s).y = (*s).z + 42
+   │              ─────┬─────  
+   │                   ╰─────── type mismatch. expected: int, got: ?0
+───╯
+Error: type mismatch. expected: int, got: ?0
+    ╭─[ /home/domin/Desktop/must/tests/inputs/array_big.must:14:28 ]
+    │
+ 14 │         S .{ x = true, y = 0, z = 1 },
+    │                            ┬  
+    │                            ╰── type mismatch. expected: int, got: ?0
+────╯
+Error: type mismatch. expected: int, got: ?1
+    ╭─[ /home/domin/Desktop/must/tests/inputs/array_big.must:14:35 ]
+    │
+ 14 │         S .{ x = true, y = 0, z = 1 },
+    │                                   ┬  
+    │                                   ╰── type mismatch. expected: int, got: ?1
+────╯
+Error: type mismatch. expected: int, got: ?2
+    ╭─[ /home/domin/Desktop/must/tests/inputs/array_big.must:16:28 ]
+    │
+ 16 │         S .{ x = true, y = 4, z = 5 },
+    │                            ┬  
+    │                            ╰── type mismatch. expected: int, got: ?2
+────╯
+Error: type mismatch. expected: int, got: ?3
+    ╭─[ /home/domin/Desktop/must/tests/inputs/array_big.must:16:35 ]
+    │
+ 16 │         S .{ x = true, y = 4, z = 5 },
+    │                                   ┬  
+    │                                   ╰── type mismatch. expected: int, got: ?3
+────╯
+Error: type mismatch. expected: int, got: ?4
+    ╭─[ /home/domin/Desktop/must/tests/inputs/array_big.must:15:36 ]
+    │
+ 15 │         S .{ x = false, y = 2, z = 3 },
+    │                                    ┬  
+    │                                    ╰── type mismatch. expected: int, got: ?4
+────╯
+Error: type mismatch. expected: int, got: ?5
+    ╭─[ /home/domin/Desktop/must/tests/inputs/array_big.must:15:29 ]
+    │
+ 15 │         S .{ x = false, y = 2, z = 3 },
+    │                             ┬  
+    │                             ╰── type mismatch. expected: int, got: ?5
+────╯
+Error: type mismatch. expected: int, got: ?7
+    ╭─[ /home/domin/Desktop/must/tests/inputs/array_big.must:18:33 ]
+    │
+ 18 │     arr[1] = S .{ x = true, y = 6, z = 13 };
+    │                                 ┬  
+    │                                 ╰── type mismatch. expected: int, got: ?7
+────╯
+Error: type mismatch. expected: int, got: ?8
+    ╭─[ /home/domin/Desktop/must/tests/inputs/array_big.must:18:40 ]
+    │
+ 18 │     arr[1] = S .{ x = true, y = 6, z = 13 };
+    │                                        ─┬  
+    │                                         ╰── type mismatch. expected: int, got: ?8
+────╯
+errors occured, compilation aborted

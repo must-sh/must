@@ -1,0 +1,68 @@
+---
+source: tests/run.rs
+assertion_line: 23
+expression: combined_output
+input_file: tests/inputs/arith.must
+---
+EXIT CODE: 255
+
+--- STDOUT ---
+
+--- STDERR ---
+Error: type mismatch. expected: ?0, got: int
+   ╭─[ /home/domin/Desktop/must/tests/inputs/arith.must:6:5 ]
+   │
+ 6 │     x * x
+   │     ┬  
+   │     ╰── type mismatch. expected: ?0, got: int
+───╯
+Error: type mismatch. expected: ?0, got: int
+   ╭─[ /home/domin/Desktop/must/tests/inputs/arith.must:6:9 ]
+   │
+ 6 │     x * x
+   │         ┬  
+   │         ╰── type mismatch. expected: ?0, got: int
+───╯
+Error: type mismatch. expected: int, got: ?0
+   ╭─[ /home/domin/Desktop/must/tests/inputs/arith.must:6:5 ]
+   │
+ 6 │     x * x
+   │     ──┬──  
+   │       ╰──── type mismatch. expected: int, got: ?0
+───╯
+Error: type mismatch. expected: ?2, got: int
+    ╭─[ /home/domin/Desktop/must/tests/inputs/arith.must:10:6 ]
+    │
+ 10 │     (x / 2) * 2 == x
+    │      ┬  
+    │      ╰── type mismatch. expected: ?2, got: int
+────╯
+Error: type mismatch. expected: ?0, got: int
+    ╭─[ /home/domin/Desktop/must/tests/inputs/arith.must:10:20 ]
+    │
+ 10 │     (x / 2) * 2 == x
+    │                    ┬  
+    │                    ╰── type mismatch. expected: ?0, got: int
+────╯
+Error: type mismatch. expected: ?0, got: int
+    ╭─[ /home/domin/Desktop/must/tests/inputs/arith.must:15:15 ]
+    │
+ 15 │     while 0 < i {
+    │               ┬  
+    │               ╰── type mismatch. expected: ?0, got: int
+────╯
+Error: type mismatch. expected: ?2, got: int
+    ╭─[ /home/domin/Desktop/must/tests/inputs/arith.must:17:13 ]
+    │
+ 17 │         i = i - 1
+    │             ┬  
+    │             ╰── type mismatch. expected: ?2, got: int
+────╯
+Error: type mismatch. expected: int, got: ?2
+    ╭─[ /home/domin/Desktop/must/tests/inputs/arith.must:17:13 ]
+    │
+ 17 │         i = i - 1
+    │             ──┬──  
+    │               ╰──── type mismatch. expected: int, got: ?2
+────╯
+errors occured, compilation aborted

@@ -22,6 +22,12 @@ pub enum Def<'db> {
     Fn(FnDef<'db>),
     Struct(StructDef<'db>),
     Import(StrLit<'db>),
+    Static {
+        name: Ident<'db>,
+        is_mut: bool,
+        tp: TypeId<'db>,
+        value: ExprId<'db>,
+    },
 }
 
 #[salsa::tracked(debug)]
@@ -51,7 +57,7 @@ pub struct ExprId {
 
 #[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::Update)]
 pub enum ExprData<'db> {
-    Int(i64),
+    Int(u64),
     Float(StrLit<'db>),
     Bool(bool),
     Char(u8),

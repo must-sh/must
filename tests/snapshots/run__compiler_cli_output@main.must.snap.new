@@ -1,0 +1,21 @@
+---
+source: tests/run.rs
+assertion_line: 23
+expression: combined_output
+input_file: tests/inputs/main.must
+---
+EXIT CODE: 255
+
+--- STDOUT ---
+
+--- STDERR ---
+Error: type mismatch. expected: int, got: ?1
+   ╭─[ /home/domin/Desktop/must/tests/inputs/main.must:3:5 ]
+   │
+ 3 │ ╭─▶     let mut i = 0 in
+   ┆ ┆   
+ 9 │ ├─▶     sum
+   │ │             
+   │ ╰───────────── type mismatch. expected: int, got: ?1
+───╯
+errors occured, compilation aborted

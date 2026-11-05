@@ -2,7 +2,11 @@ use std::{collections::HashMap, fs::read_to_string};
 
 use salsa::Database;
 
-use crate::{ast, bytecode, input, lowerer, resolve, tp};
+use crate::{
+    ast, bytecode, eval,
+    input::{self, Source},
+    lowerer, resolve, tp,
+};
 
 #[salsa::tracked]
 pub fn type_check(db: &dyn Database, sf: input::Source) {
@@ -19,6 +23,9 @@ pub fn type_check(db: &dyn Database, sf: input::Source) {
                 ast::Def::Import(name) => {
                     let sf = get_child_sf(db, sf, name);
                     type_check(db, sf);
+                }
+                ast::Def::Static { tp, value, .. } => {
+                    type_check_expr(db, sf, value, tp);
                 }
             }
         }
@@ -43,9 +50,22 @@ pub fn type_check_func<'db>(
     env.finish()
 }
 
+#[salsa::tracked]
+pub fn type_check_expr<'db>(
+    db: &'db dyn Database,
+    sf: Source,
+    expr: ast::ExprId<'db>,
+    tp: tp::TypeId<'db>,
+) -> tp::InferenceResult<'db> {
+    let mut env: tp::Env = tp::Env::new(db, sf);
+    env.check_expr(expr, tp, false);
+    env.finish()
+}
+
 pub fn compile(db: &dyn Database, sf: input::Source) -> bytecode::Prog {
     let mut funcs: HashMap<String, bytecode::Func> = HashMap::new();
     let mut externs: HashMap<String, bytecode::FuncSig> = HashMap::new();
+    let mut statics = HashMap::new();
 
     let mut sources = vec![sf];
 
@@ -68,11 +88,25 @@ pub fn compile(db: &dyn Database, sf: input::Source) -> bytecode::Prog {
                     let sf = get_child_sf(db, sf, ident);
                     sources.push(sf);
                 }
+                ast::Def::Static {
+                    name,
+                    is_mut,
+                    tp,
+                    value,
+                } => {
+                    let v = eval::eval_expr(db, value);
+                    let name = name.text(db).clone();
+                    statics.insert(name, (v, is_mut));
+                }
             }
         }
     }
 
-    bytecode::Prog { funcs, externs }
+    bytecode::Prog {
+        funcs,
+        externs,
+        statics,
+    }
 }
 
 pub fn get_child_sf(

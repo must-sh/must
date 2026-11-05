@@ -1,0 +1,19 @@
+---
+source: tests/run.rs
+assertion_line: 23
+expression: combined_output
+input_file: tests/inputs/tuples.must
+---
+EXIT CODE: 255
+
+--- STDOUT ---
+
+--- STDERR ---
+Error: type mismatch. expected: int, got: ?3
+   ╭─[ /home/domin/Desktop/must/tests/inputs/tuples.must:9:16 ]
+   │
+ 9 │     must_print(res)
+   │                ─┬─  
+   │                 ╰─── type mismatch. expected: int, got: ?3
+───╯
+errors occured, compilation aborted

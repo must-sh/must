@@ -56,6 +56,15 @@ fn get_defs<'db>(db: &'db dyn Database, sf: Source) -> ModuleDefs<'db> {
                 let defs = get_defs(db, sf);
                 items.extend(defs.items);
             }
+            ast::Def::Static {
+                name,
+                is_mut,
+                tp,
+                value,
+            } => {
+                let item = Item::Static { is_mut, tp };
+                items.insert(name, item);
+            }
         }
     }
 
@@ -70,6 +79,10 @@ pub enum Item<'db> {
     },
     Type {
         def: ast::StructDef<'db>,
+    },
+    Static {
+        is_mut: bool,
+        tp: TypeId<'db>,
     },
 }
 

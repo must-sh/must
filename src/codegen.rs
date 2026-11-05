@@ -10,10 +10,10 @@ use cranelift_codegen::{
     settings::{self, Configurable},
 };
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
-use cranelift_module::{FuncId, Linkage, Module};
+use cranelift_module::{DataId, FuncId, Linkage, Module};
 use cranelift_object::{ObjectModule, ObjectProduct};
 
-use crate::bytecode;
+use crate::{bytecode, eval};
 
 impl bytecode::Type {
     pub fn as_cranelift_tp(self) -> ir::Type {
@@ -71,6 +71,10 @@ pub fn compile(prog: bytecode::Prog, print: bool) -> ObjectProduct {
         lowerer.declare_fn(name.clone(), sig, Linkage::Import);
     }
 
+    for (name, (val, is_mut)) in &prog.statics {
+        lowerer.define_global(name.clone(), *is_mut, val, Linkage::Export);
+    }
+
     for (name, f) in prog.funcs {
         lowerer.define_fn(name, f);
     }
@@ -83,6 +87,7 @@ struct Lowerer {
     fn_map: HashMap<String, FuncId>,
     fn_sigs: HashMap<FuncId, Signature>,
     print: bool,
+    global_map: HashMap<String, DataId>,
 }
 
 impl Lowerer {
@@ -91,6 +96,7 @@ impl Lowerer {
             m,
             fn_map: HashMap::new(),
             fn_sigs: HashMap::new(),
+            global_map: HashMap::new(),
             print,
         }
     }
@@ -104,6 +110,14 @@ impl Lowerer {
         let id = self.m.declare_function(&name, linkage, &sig).unwrap();
         self.fn_map.insert(name, id);
         self.fn_sigs.insert(id, sig);
+    }
+
+    fn define_global(&mut self, name: String, is_mut: bool, val: &eval::Value, linkage: Linkage) {
+        let id = self.m.declare_data(&name, linkage, is_mut, false).unwrap();
+        self.global_map.insert(name, id);
+        let mut data_desc = cranelift_module::DataDescription::new();
+        data_desc.define(val.as_bytes());
+        self.m.define_data(id, &data_desc).unwrap();
     }
 
     fn make_sig(&mut self, f: &bytecode::FuncSig) -> Signature {
@@ -178,19 +192,19 @@ impl Lowerer {
                     bytecode::Inst::PushInt(n, tp) => {
                         let v = match tp {
                             bytecode::Type::Int128 | bytecode::Type::UInt128 => {
-                                b.ins().iconst(types::I128, n)
+                                b.ins().iconst(types::I128, n as i64)
                             }
                             bytecode::Type::Int64 | bytecode::Type::UInt64 => {
-                                b.ins().iconst(types::I64, n)
+                                b.ins().iconst(types::I64, n as i64)
                             }
                             bytecode::Type::Int32 | bytecode::Type::UInt32 => {
-                                b.ins().iconst(types::I32, n)
+                                b.ins().iconst(types::I32, n as i64)
                             }
                             bytecode::Type::Int16 | bytecode::Type::UInt16 => {
-                                b.ins().iconst(types::I16, n)
+                                b.ins().iconst(types::I16, n as i64)
                             }
                             bytecode::Type::Bool | bytecode::Type::Int8 | bytecode::Type::UInt8 => {
-                                b.ins().iconst(types::I8, n)
+                                b.ins().iconst(types::I8, n as i64)
                             }
                             bytecode::Type::Float16 => unimplemented!(),
                             bytecode::Type::Float32 => b.ins().f32const(n as f32),
@@ -205,7 +219,7 @@ impl Lowerer {
                             bytecode::Type::Float32 => b.ins().f32const(n as f32),
                             bytecode::Type::Float64 => b.ins().f64const(n as f64),
                             bytecode::Type::Float128 => unimplemented!(),
-                            _ => unreachable!(),
+                            _ => unreachable!("{:?}", tp),
                         };
                         stack.push(v);
                     }
@@ -391,6 +405,12 @@ impl Lowerer {
                         let v = b.ins().func_addr(types::I64, f);
                         stack.push(v)
                     }
+                    bytecode::Inst::Global(name) => {
+                        let global_id = self.get_global_id(&name);
+                        let gv = self.m.declare_data_in_func(global_id, b.func);
+                        let v = b.ins().global_value(types::I64, gv);
+                        stack.push(v);
+                    }
                 };
             }
 
@@ -437,5 +457,12 @@ impl Lowerer {
 
     fn get_func_sig(&self, id: FuncId) -> &Signature {
         self.fn_sigs.get(&id).unwrap()
+    }
+
+    fn get_global_id(&self, name: &str) -> cranelift_module::DataId {
+        match self.global_map.get(name) {
+            Some(f) => *f,
+            None => panic!("{name}"),
+        }
     }
 }
