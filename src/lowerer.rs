@@ -206,8 +206,8 @@ impl<'a> Builder<'a> {
                     self.push_inst(Inst::Binop(Binop::Mul, bytecode::Type::UInt64));
 
                     self.push_inst(Inst::CapOffset);
-                    let place = self.store_ptr();
-                    place
+
+                    self.store_ptr()
                 }
                 TypeData::Range => self.lower_into_tmp(e),
                 _ => panic!(),
@@ -237,8 +237,8 @@ impl<'a> Builder<'a> {
             }
             ExprData::Str(s) => {
                 let bytes = s.text(self.db).as_bytes();
-                for i in 0..bytes.len() {
-                    self.push_inst(Inst::PushInt(bytes[i] as u64, bytecode::Type::UInt8));
+                for (i, b) in bytes.iter().enumerate() {
+                    self.push_inst(Inst::PushInt(*b as u64, bytecode::Type::UInt8));
                     dest.add_offset(i as u32).store(self);
                 }
                 self.push_inst(Inst::PushInt(0, bytecode::Type::UInt8));
@@ -626,7 +626,7 @@ impl<'a> Builder<'a> {
                     self.push_inst(Inst::FnAddr(full_name));
                     self.store_ptr()
                 }
-                Some(Item::Static { is_mut, tp }) => {
+                Some(Item::Static { is_mut: _, tp: _ }) => {
                     self.push_inst(Inst::Global(x.text(self.db).clone()));
                     self.store_ptr()
                 }

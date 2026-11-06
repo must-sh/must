@@ -91,7 +91,7 @@ pub fn compile(db: &dyn Database, sf: input::Source) -> bytecode::Prog {
                 ast::Def::Static {
                     name,
                     is_mut,
-                    tp,
+                    tp: _,
                     value,
                 } => {
                     let v = eval::eval_expr(db, value);
@@ -118,6 +118,6 @@ pub fn get_child_sf(
     path.pop();
     path.push(name.text(db).clone());
     let text = read_to_string(&path).expect("couldnt open file");
-    let sf = input::Source::new(db, text.clone(), path.into());
-    sf
+    
+    input::Source::new(db, text.clone(), path)
 }

@@ -60,7 +60,7 @@ fn get_defs<'db>(db: &'db dyn Database, sf: Source) -> ModuleDefs<'db> {
                 name,
                 is_mut,
                 tp,
-                value,
+                value: _,
             } => {
                 let item = Item::Static { is_mut, tp };
                 items.insert(name, item);

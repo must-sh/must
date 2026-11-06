@@ -93,13 +93,13 @@ impl<'db> TypeData<'db> {
         TypeId::new(db, self)
     }
 
-    pub fn to_string(self, db: &'db dyn Database) -> String {
+    pub fn to_string(&self, db: &'db dyn Database) -> String {
         match self {
             TypeData::Error => format!("{:?}", self),
             TypeData::Infer(infer_var) => format!("?{}", infer_var.index()),
             TypeData::Primitive(tp) => format!("{:?}", tp),
-            TypeData::Range => format!("Range"),
-            TypeData::Fn(ref fn_sig) => {
+            TypeData::Range => "Range".to_string(),
+            TypeData::Fn(fn_sig) => {
                 format!(
                     "fn({}) -> {}",
                     fn_sig
@@ -115,7 +115,7 @@ impl<'db> TypeData<'db> {
             TypeData::Ptr(tp, false) => format!("*{}", tp.to_string(db)),
             TypeData::Slice(tp, true) => format!("[]mut {}", tp.to_string(db)),
             TypeData::Slice(tp, false) => format!("[]{}", tp.to_string(db)),
-            TypeData::Tuple(ref tps) => format!(
+            TypeData::Tuple(tps) => format!(
                 "({})",
                 tps.iter()
                     .map(|t| t.to_string(db))
@@ -248,10 +248,6 @@ impl Diagnostic {
         )
     }
 
-    pub fn unknown_type(db: &dyn Database, span: Span, name: String, source: Source) -> Self {
-        Diagnostic::error(db, source, span, format!("unknown type: {:?}", name))
-    }
-
     pub fn duplicate_field(db: &dyn Database, span: Span, name: Ident, source: Source) -> Self {
         Diagnostic::error(
             db,
@@ -374,11 +370,6 @@ impl<'a> Env<'a> {
 
     pub fn new_float_var(&mut self) -> TypeId<'a> {
         let var = self.unif_table.new_key(InferValue::Float);
-        TypeData::Infer(var).wrap(self.db)
-    }
-
-    pub fn new_unbound_var(&mut self) -> TypeId<'a> {
-        let var = self.unif_table.new_key(InferValue::Unbound);
         TypeData::Infer(var).wrap(self.db)
     }
 
@@ -677,14 +668,8 @@ impl<'a> Env<'a> {
                             (TypeData::Error.wrap(db), true)
                         }
                     }
-                    TypeData::Slice(_, _) => {
-                        if ident.text(db) == "len" {
-                            (TypeData::Primitive(bytecode::Type::UInt64).wrap(db), false)
-                        } else {
-                            Diagnostic::no_field_on_type(db, e.span(db), ident, tp, self.source)
-                                .accumulate(db);
-                            (TypeData::Error.wrap(db), true)
-                        }
+                    TypeData::Slice(_, _) if ident.text(db) == "len" => {
+                        (TypeData::Primitive(bytecode::Type::UInt64).wrap(db), false)
                     }
                     _ => {
                         Diagnostic::no_field_on_type(db, e.span(db), ident, tp, self.source)

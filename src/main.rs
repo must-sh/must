@@ -46,7 +46,7 @@ fn main() {
 }
 
 fn check_and_compile(db: &DatabaseImpl, filename: &String, color: bool) -> bytecode::Prog {
-    let text = read_to_string(&filename).expect("couldnt open file");
+    let text = read_to_string(filename).expect("couldnt open file");
     let sf = Source::new(db, text.clone(), filename.into());
     driver::type_check(db, sf);
     let diags = driver::type_check::accumulated::<Diagnostic>(db, sf);

@@ -1,5 +1,5 @@
 use std::io::ErrorKind;
-use std::process::{Command, Output};
+use std::process::Command;
 use std::{fs, str};
 
 #[test]

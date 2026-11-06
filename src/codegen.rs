@@ -217,7 +217,7 @@ impl Lowerer {
                         let v = match tp {
                             bytecode::Type::Float16 => unimplemented!(),
                             bytecode::Type::Float32 => b.ins().f32const(n as f32),
-                            bytecode::Type::Float64 => b.ins().f64const(n as f64),
+                            bytecode::Type::Float64 => b.ins().f64const(n),
                             bytecode::Type::Float128 => unimplemented!(),
                             _ => unreachable!("{:?}", tp),
                         };
