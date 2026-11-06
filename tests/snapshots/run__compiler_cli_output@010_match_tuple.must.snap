@@ -1,0 +1,18 @@
+---
+source: tests/run.rs
+expression: combined_output
+input_file: tests/ok/010_match_tuple.must
+---
+COMPILER EXIT CODE: 0
+
+--- COMPILER STDOUT ---
+
+--- COMPILER STDERR ---
+
+
+BINARY EXIT CODE: 2
+
+--- BINARY STDOUT ---
+42
+4
+4

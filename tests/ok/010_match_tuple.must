@@ -1,0 +1,15 @@
+
+extern fn printf(s: *uint8, n: int64)
+extern fn malloc(size: uint64) -> *mut ()
+
+fn main() {
+    let data = (malloc(4), 4) as []mut uint8 in
+    data[0] = 42;
+
+    let (ptr, len) = data as (*mut uint8, uint64) in
+
+    printf(&"%d\n"[0], *ptr as int64);
+    printf(&"%d\n"[0], len as int64);
+
+    printf(&"%d\n"[0], data.len as int64)
+}

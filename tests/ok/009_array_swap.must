@@ -1,0 +1,14 @@
+extern fn printf(s: *uint8, n: int64)
+
+fn swap(x: *mut int64, y: *mut int64) {
+    let tmp = *x in
+    *x = *y;
+    *y = tmp
+}
+
+fn main() {
+    let mut data = [0, 1, 2, 3] in
+    swap(&data[0], &data[2]);
+    printf(&"%d\n"[0], data[0]);
+    printf(&"%d\n"[0], data[2])
+}

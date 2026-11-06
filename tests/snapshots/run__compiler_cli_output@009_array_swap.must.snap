@@ -1,0 +1,17 @@
+---
+source: tests/run.rs
+expression: combined_output
+input_file: tests/ok/009_array_swap.must
+---
+COMPILER EXIT CODE: 0
+
+--- COMPILER STDOUT ---
+
+--- COMPILER STDERR ---
+
+
+BINARY EXIT CODE: 2
+
+--- BINARY STDOUT ---
+2
+0
