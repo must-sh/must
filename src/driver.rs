@@ -118,6 +118,6 @@ pub fn get_child_sf(
     path.pop();
     path.push(name.text(db).clone());
     let text = read_to_string(&path).expect("couldnt open file");
-    
+
     input::Source::new(db, text.clone(), path)
 }
