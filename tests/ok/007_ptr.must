@@ -1,0 +1,13 @@
+
+fn swap(x: *mut int32, y: *mut int32) {
+    let tmp = *x in
+    *x = *y;
+    *y = tmp
+}
+
+fn main() -> int32 {
+    let mut x = 42 in
+    let mut y = 13 in
+    swap(&x, &y);
+    x
+}

@@ -1,0 +1,25 @@
+---
+source: tests/run.rs
+expression: combined_output
+input_file: tests/ok/006_primes.must
+---
+COMPILER EXIT CODE: 0
+
+--- COMPILER STDOUT ---
+
+--- COMPILER STDERR ---
+
+
+BINARY EXIT CODE: 0
+
+--- BINARY STDOUT ---
+2
+3
+5
+7
+11
+13
+17
+19
+23
+29

@@ -1,0 +1,54 @@
+
+extern fn printf(s: *uint8, n: int64)
+
+fn sort(arr: []mut int64, tmp: []mut int64) {
+    let n = arr.len in
+    if n > 1 {
+        let m = n / 2 in
+        sort(arr[0..m], tmp[0..m]);
+        sort(arr[m..n], tmp[m..n]);
+
+        let mut i = 0 in
+        let mut j = 0 in
+        let mut k = m in
+
+        while j < m && k < n {
+            if arr[k] < arr[j] {
+                tmp[i] = arr[k];
+                k = k + 1
+            } else {
+                tmp[i] = arr[j];
+                j = j + 1
+            };
+            i = i + 1
+        };
+
+        while j < m {
+            tmp[i] = arr[j];
+            i = i + 1;
+            j = j + 1
+        };
+
+        while k < n {
+            tmp[i] = arr[k];
+            i = i + 1;
+            k = k + 1
+        };
+
+        while i > 0 {
+            i = i - 1;
+            arr[i] = tmp[i]
+        }
+    }
+}
+
+fn main() {
+    let mut arr = [4, 8, 2, 5, 3, 1, 7, 6, 9] in
+    let mut tmp = arr in
+    sort(arr[0..9], tmp[0..9]);
+    let mut i = 0 in
+    while i < 9 {
+        printf(&"%d\n"[0], arr[i]);
+        i = i + 1
+    }
+}

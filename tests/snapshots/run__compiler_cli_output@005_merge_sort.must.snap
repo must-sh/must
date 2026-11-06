@@ -1,0 +1,24 @@
+---
+source: tests/run.rs
+expression: combined_output
+input_file: tests/ok/005_merge_sort.must
+---
+COMPILER EXIT CODE: 0
+
+--- COMPILER STDOUT ---
+
+--- COMPILER STDERR ---
+
+
+BINARY EXIT CODE: 9
+
+--- BINARY STDOUT ---
+1
+2
+3
+4
+5
+6
+7
+8
+9

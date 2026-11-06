@@ -1,0 +1,15 @@
+---
+source: tests/run.rs
+expression: combined_output
+input_file: tests/ok/007_ptr.must
+---
+COMPILER EXIT CODE: 0
+
+--- COMPILER STDOUT ---
+
+--- COMPILER STDERR ---
+
+
+BINARY EXIT CODE: 13
+
+--- BINARY STDOUT ---
