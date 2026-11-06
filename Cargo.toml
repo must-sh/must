@@ -41,7 +41,7 @@ cranelift-module = "0.132.3"
 cranelift-object = "0.132.3"
 ena = "0.14.4"
 lalrpop-util = "0.23.2"
-salsa = "0.26.2"
+salsa = "0.28.5"
 serde = { version = "1.0.229", features = ["derive"] }
 toml = "1.2.1"
 

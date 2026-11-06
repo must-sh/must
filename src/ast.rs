@@ -6,18 +6,19 @@ use crate::{
 
 #[salsa::tracked(debug)]
 pub struct Span<'db> {
-    #[tracked(ref)]
+    #[returns(clone)]
     pub start_byte: usize,
-    #[tracked(ref)]
+    #[returns(clone)]
     pub end_byte: usize,
 }
 
 #[salsa::tracked(debug)]
 pub struct File<'db> {
+    #[returns(clone)]
     pub defs: Vec<Def<'db>>,
 }
 
-#[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::Update)]
+#[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::SalsaValue)]
 pub enum Def<'db> {
     Fn(FnDef<'db>),
     Struct(StructDef<'db>),
@@ -32,30 +33,42 @@ pub enum Def<'db> {
 
 #[salsa::tracked(debug)]
 pub struct StructDef<'db> {
+    #[returns(clone)]
     pub name: Ident<'db>,
+    #[returns(clone)]
     pub span: Span<'db>,
+    #[returns(clone)]
     pub fields: Vec<(Ident<'db>, TypeId<'db>)>,
+    #[returns(clone)]
     pub sf: Source,
 }
 
 #[salsa::tracked(debug)]
 pub struct FnDef<'db> {
+    #[returns(clone)]
     pub is_ext: bool,
     pub name: Ident<'db>,
+    #[returns(clone)]
     pub span: Span<'db>,
+    #[returns(clone)]
     pub args: Vec<(PatternId<'db>, TypeId<'db>)>,
+    #[returns(clone)]
     pub ret: Option<TypeId<'db>>,
+    #[returns(clone)]
     pub body: Option<ExprId<'db>>,
+    #[returns(clone)]
     pub sf: Source,
 }
 
 #[salsa::interned(debug)]
 pub struct ExprId {
+    #[returns(clone)]
     pub data: ExprData<'db>,
+    #[returns(clone)]
     pub span: Span<'db>,
 }
 
-#[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::Update)]
+#[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::SalsaValue)]
 pub enum ExprData<'db> {
     Int(u64),
     Float(StrLit<'db>),
@@ -92,11 +105,13 @@ pub enum ExprData<'db> {
 
 #[salsa::interned(debug)]
 pub struct PatternId {
+    #[returns(clone)]
     pub data: PatternData<'db>,
+    #[returns(clone)]
     pub span: Span<'db>,
 }
 
-#[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::Update)]
+#[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::SalsaValue)]
 pub enum PatternData<'db> {
     Wildcard,
     Var(Ident<'db>, bool),

@@ -7,7 +7,7 @@ use crate::{
 use salsa::Database;
 use std::collections::HashMap;
 
-#[derive(Debug, PartialEq, Clone, salsa::Update)]
+#[derive(Debug, PartialEq, Clone, salsa::SalsaValue)]
 pub struct ModuleDefs<'db> {
     pub items: HashMap<Ident<'db>, Item<'db>>,
 }
@@ -34,7 +34,7 @@ fn get_defs<'db>(db: &'db dyn Database, sf: Source) -> ModuleDefs<'db> {
             ast::Def::Fn(func) => {
                 let full_name = func.name(db).text(db).clone();
                 items.insert(
-                    func.name(db),
+                    *func.name(db),
                     Item::Function {
                         def: func,
                         full_name,
@@ -54,7 +54,7 @@ fn get_defs<'db>(db: &'db dyn Database, sf: Source) -> ModuleDefs<'db> {
                 // 4. append to items
                 let sf = get_child_sf(db, sf, name);
                 let defs = get_defs(db, sf);
-                items.extend(defs.items);
+                items.extend(defs.items.clone());
             }
             ast::Def::Static {
                 name,
@@ -71,7 +71,7 @@ fn get_defs<'db>(db: &'db dyn Database, sf: Source) -> ModuleDefs<'db> {
     ModuleDefs { items }
 }
 
-#[derive(Clone, Debug, PartialEq, salsa::Update)]
+#[derive(Clone, Debug, PartialEq, salsa::SalsaValue)]
 pub enum Item<'db> {
     Function {
         full_name: String,

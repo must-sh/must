@@ -13,6 +13,7 @@ use crate::{
 
 #[salsa::interned(debug)]
 pub struct TypeId {
+    #[returns(clone)]
     pub data: TypeData<'db>,
 }
 
@@ -24,7 +25,7 @@ impl<'a> TypeId<'a> {
 
 use ena::unify::{UnifyKey, UnifyValue};
 
-#[derive(Debug, Hash, Eq, PartialEq, Clone, Copy, salsa::Update)]
+#[derive(Debug, Hash, Eq, PartialEq, Clone, Copy, salsa::SalsaValue)]
 pub struct InferVar<'db>(pub u32, pub PhantomData<&'db ()>);
 
 #[derive(Clone, Debug, PartialEq)]
@@ -72,7 +73,7 @@ impl<'db> UnifyValue for InferValue<'db> {
     }
 }
 
-#[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::Update)]
+#[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::SalsaValue)]
 pub enum TypeData<'db> {
     Error,
 
@@ -181,13 +182,13 @@ pub fn struct_fields<'a>(
     }
 }
 
-#[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::Update)]
+#[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::SalsaValue)]
 pub struct FnSig<'db> {
     pub args: Vec<TypeId<'db>>,
     pub ret: TypeId<'db>,
 }
 
-#[derive(Debug, PartialEq, Clone, salsa::Update)]
+#[derive(Debug, PartialEq, Clone, salsa::SalsaValue)]
 pub struct InferenceResult<'db> {
     pub type_map: HashMap<ExprId<'db>, TypeId<'db>>,
 }
@@ -765,13 +766,16 @@ impl<'a> Env<'a> {
             .cloned()
             .or_else(|| match resolve::get_item(self.db, self.source, x) {
                 Some(Item::Function { def, .. }) => {
-                    let sig = parse_fn_signature(self.db, def);
+                    let sig = parse_fn_signature(self.db, *def);
                     Some(VarBinding {
-                        tp: TypeData::Fn(sig).wrap(self.db),
+                        tp: TypeData::Fn(sig.clone()).wrap(self.db),
                         is_mut: false,
                     })
                 }
-                Some(Item::Static { is_mut, tp }) => Some(VarBinding { tp, is_mut }),
+                Some(Item::Static { is_mut, tp }) => Some(VarBinding {
+                    tp: *tp,
+                    is_mut: *is_mut,
+                }),
                 _ => None,
             })
     }

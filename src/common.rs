@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-#[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::Update)]
+#[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::SalsaValue)]
 pub enum Binop {
     // Arithmetic
     Add,
@@ -43,7 +43,7 @@ impl Display for Binop {
     }
 }
 
-#[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::Update)]
+#[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::SalsaValue)]
 pub enum Unop {
     Not,
     Neg,

@@ -137,7 +137,7 @@ impl<'a> Builder<'a> {
     }
 
     pub fn get_tp(&self, e: ExprId<'a>) -> TypeId<'a> {
-        let tp_map = type_check_func(self.db, self.func).type_map;
+        let tp_map = type_check_func(self.db, self.func).type_map.clone();
         *tp_map.get(&e).unwrap()
     }
 
@@ -623,7 +623,7 @@ impl<'a> Builder<'a> {
         } else {
             match resolve::get_item(self.db, self.func.sf(self.db), x) {
                 Some(Item::Function { full_name, .. }) => {
-                    self.push_inst(Inst::FnAddr(full_name));
+                    self.push_inst(Inst::FnAddr(full_name.clone()));
                     self.store_ptr()
                 }
                 Some(Item::Static { is_mut: _, tp: _ }) => {
