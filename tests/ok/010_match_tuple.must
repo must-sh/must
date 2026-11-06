@@ -1,5 +1,5 @@
 
-extern fn printf(s: *uint8, n: int64)
+extern fn printf(s: *uint8, n: uint8)
 extern fn malloc(size: uint64) -> *mut ()
 
 fn main() {
@@ -8,8 +8,8 @@ fn main() {
 
     let (ptr, len) = data as (*mut uint8, uint64) in
 
-    printf(&"%d\n"[0], *ptr as int64);
-    printf(&"%d\n"[0], len as int64);
+    printf(&"%d\n"[0], *ptr as uint8);
+    printf(&"%d\n"[0], len as uint8);
 
-    printf(&"%d\n"[0], data.len as int64)
+    printf(&"%d\n"[0], data.len as uint8)
 }
