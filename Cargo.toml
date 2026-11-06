@@ -22,16 +22,6 @@ categories = [
     "development-tools"
 ]
 
-include = [
-    "src/**/*",
-    "Cargo.toml",
-    "Cargo.lock",
-    "README.md",
-    "LICENSE-MIT",
-    "LICENSE-APACHE",
-    "build.rs",
-]
-
 [dependencies]
 ariadne = "0.6.0"
 clap = { version = "4.6.7", features = ["derive"] }
