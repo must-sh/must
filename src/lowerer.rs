@@ -359,9 +359,9 @@ impl<'a> Builder<'a> {
                 let dest = self.lower_place(e1);
                 self.lower(e2, dest);
             }
-            ExprData::Deref(expr) => {
+            ExprData::Deref(_) => {
                 let layout = self.get_layout_of_expr(e);
-                self.lower_place(expr).copy_to(self, dest, &layout);
+                self.lower_place(e).copy_to(self, dest, &layout);
             }
             ExprData::AddressOf(e) => {
                 self.lower_place(e).leave_addr(self);
@@ -499,8 +499,14 @@ impl<'a> Builder<'a> {
             }
             PatternData::Tuple(pats) => {
                 if let TypeData::Tuple(tps) = tp.data(self.db) {
-                    for (pat, tp) in pats.into_iter().zip(tps).rev() {
-                        self.lower_pat(pat, tp, place);
+                    let layout = tp.layout(self.db, self.source);
+                    let offsets = match layout.fields {
+                        bytecode::Fields::Struct { fields } => fields,
+                        _ => panic!(),
+                    };
+                    for (i, (pat, tp)) in pats.into_iter().zip(tps).enumerate() {
+                        let offset = offsets[i].0;
+                        self.lower_pat(pat, tp, place.add_offset(offset));
                     }
                 } else {
                     panic!()

@@ -38,7 +38,6 @@ fn main() {
     let db = &DatabaseImpl::new();
     let root_dir = cli.path;
     let prog = check_and_compile(db, &root_dir, !cli.no_color);
-    println!("{}", prog);
     let obj = codegen::compile(prog, false);
     let bytes = obj.emit().unwrap();
     let mut p = PathBuf::from(root_dir);
