@@ -1,6 +1,6 @@
 ---
 source: tests/run.rs
-expression: combined_output
+expression: sanitize_output(&combined_output)
 input_file: tests/err/000_scope.must
 ---
 COMPILER EXIT CODE: 255
@@ -9,7 +9,7 @@ COMPILER EXIT CODE: 255
 
 --- COMPILER STDERR ---
 Error: unbound var: "z"
-   ╭─[ /home/domin/Desktop/must/tests/err/000_scope.must:4:17 ]
+   ╭─[ [PROJECT_ROOT]/tests/err/000_scope.must:4:17 ]
    │
  4 │     let mut y = z in
    │                 ┬  

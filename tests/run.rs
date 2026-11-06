@@ -2,6 +2,16 @@ use std::io::ErrorKind;
 use std::process::Command;
 use std::{fs, str};
 
+use std::env;
+
+fn sanitize_output(output: &str) -> String {
+    let current_dir = env::current_dir().unwrap();
+    let current_dir_str = current_dir.to_string_lossy();
+
+    // Replace absolute workspace path with a fixed placeholder
+    output.replace(&*current_dir_str, "[PROJECT_ROOT]")
+}
+
 #[test]
 fn test_compiler_cli_output() {
     let binary_path = env!("CARGO_BIN_EXE_mustc");
@@ -47,7 +57,7 @@ BINARY EXIT CODE: {b_exit_code}\n
 --- BINARY STDOUT ---\n{b_stdout}"
         );
 
-        insta::assert_snapshot!(combined_output);
+        insta::assert_snapshot!(sanitize_output(&combined_output));
     });
 
     insta::glob!("err/*.must", |path| {
@@ -68,6 +78,6 @@ BINARY EXIT CODE: {b_exit_code}\n
 "
         );
 
-        insta::assert_snapshot!(combined_output);
+        insta::assert_snapshot!(sanitize_output(&combined_output));
     });
 }
