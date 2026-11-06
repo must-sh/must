@@ -11,33 +11,43 @@ env:
 
 jobs:
   build:
+    name: "Build & Test"
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-  
+
       - name: Install C compiler
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential
-  
+
       - name: Set up Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
-  
+
       - name: Set up Cargo cache
         uses: Swatinem/rust-cache@v2
-  
+
       - name: Check code formatting
         run: cargo fmt --check
-  
+
       - name: Lint with Clippy
         run: cargo clippy -- -D warnings
-  
+
       - name: Build project
         run: cargo build --verbose
-  
+
       - name: Run unit and integration tests
         run: cargo test --verbose
+
+  cargo-deny:
+    name: License & Dependency Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          arguments: --workspace
